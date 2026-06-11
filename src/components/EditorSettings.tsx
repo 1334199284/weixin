@@ -1,6 +1,6 @@
 import { Fish, Compass, Sparkles, BookOpen, Layers, Check } from "lucide-react";
 import { WECHAT_THEMES } from "../lib/wechat-themes";
-import { GenerationSettings, ThemePreset } from "../types";
+import { GenerationSettings, ThemePreset, LayoutPreset } from "../types";
 
 interface EditorSettingsProps {
   settings: GenerationSettings;
@@ -113,7 +113,7 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
 
       {/* Layout Preset */}
       <div className="space-y-2.5">
-        <label className="block text-sm font-semibold text-gray-700">4. 公众号排版视觉模版</label>
+        <label className="block text-sm font-semibold text-gray-700">4. 公众号排版视觉配色 (Color Theme)</label>
         <div className="grid grid-cols-2 gap-2">
           {Object.values(WECHAT_THEMES).map((theme) => {
             const isSelected = settings.theme === theme.id;
@@ -122,17 +122,17 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
                 key={theme.id}
                 onClick={() => onChange({ theme: theme.id })}
                 className={`relative p-3 rounded-xl border text-left transition flex items-center gap-3 ${
-                  isSelected ? "border-zinc-800 bg-zinc-50" : "border-gray-100 hover:border-gray-200"
+                  isSelected ? "border-zinc-800 bg-zinc-50 font-bold" : "border-gray-100 hover:border-gray-200"
                 }`}
               >
                 <div
-                  className="h-5 w-5 rounded-full border border-gray-100 flex items-center justify-center shrink-0"
+                  className="h-5 w-5 rounded-full border border-gray-150 flex items-center justify-center shrink-0"
                   style={{ backgroundColor: theme.primaryColor }}
                 >
                   {isSelected && <div className="h-2 w-2 bg-white rounded-full" />}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-gray-900 truncate">
+                  <p className="text-xs text-gray-900 truncate">
                     {theme.name.split(" ")[0]}
                   </p>
                 </div>
@@ -142,9 +142,55 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
         </div>
       </div>
 
+      {/* Choose Layout Selector */}
+      <div className="space-y-2.5">
+        <label className="block text-sm font-semibold text-gray-700">5. 排版排版版式布局 (Layout Style)</label>
+        <p className="text-xs text-gray-400 leading-normal">
+          定制图文卡片的展示风格：极简、大牌半跨杂志、或立体分栏！<b>非单纯配色调整。</b>
+        </p>
+        <div className="grid grid-cols-1 gap-2">
+          {[
+            { id: "classic", name: "极简经典 (Classic)", desc: "标准微信标题与悬浮彩色计数，超流畅的沉浸式传统排版" },
+            { id: "split", name: "立体卡片 (Split Card)", desc: "精美圆角白色卡片，配右侧圆形胶囊勋章，模块结构鲜明立体" },
+            { id: "hybrid", name: "标题融合 (Hybrid)", desc: "创新合并排版，将段落标题融入硬朗色条内，简洁大气无冗余" },
+            { id: "clean_accent", name: "极客少数派 (SSPAI)", desc: "行业大牌热推，主色调粗体左侧边栏，搭配清透微灰色衬底与清爽白背景" },
+            { id: "fresh_borderless", name: "空气呼吸感 / 极简留白 (Fresh Airy)", desc: "清新透气，采用高级极简下划线作标题区分，无网格无框拘束，专注文字纯净阅读" },
+            { id: "bubble_fresh", name: "清新马卡龙微动 (Fresh Mint)", desc: "萌动可爱，精致圆形主色小露珠点缀，卡片阴影朦胧，适合亲切治愈的阅读风气" }
+          ].map((lay) => {
+            const isSelected = settings.layout === lay.id;
+            return (
+              <button
+                key={lay.id}
+                onClick={() => onChange({ layout: lay.id as LayoutPreset })}
+                className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3 ${
+                  isSelected
+                    ? "border-emerald-500 bg-emerald-50/40"
+                    : "border-gray-100 hover:border-gray-200"
+                }`}
+              >
+                <div className="mt-1 flex items-center justify-center shrink-0">
+                  <div className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center ${
+                    isSelected ? "border-emerald-600 bg-emerald-600 text-white" : "border-gray-300"
+                  }`}>
+                    {isSelected && <div className="h-1.5 w-1.5 bg-white rounded-full" />}
+                  </div>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                    {lay.name}
+                    {isSelected && <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.5 rounded font-bold">已选版式</span>}
+                  </p>
+                  <p className="text-[11px] text-gray-400 leading-normal">{lay.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Custom prompt override */}
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-gray-700">5. 补充润色要求 (选填)</label>
+        <label className="block text-sm font-semibold text-gray-700">6. 补充润色要求 (选填)</label>
         <input
           type="text"
           value={settings.customPrompt}

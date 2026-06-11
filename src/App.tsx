@@ -77,6 +77,7 @@ export default function App() {
 核心消耗品：拟饵的种类与选择（硬饵如米诺、亮片，软饵如卷尾蛆等）。
 必备配件：路亚钳、控鱼器、偏光镜等。`,
     theme: "green",
+    layout: "classic",
     level: "Beginner",
     tone: "Friendly",
     customPrompt: "加入更多避坑防炸线小窍门，提醒保护大自然。"
@@ -111,7 +112,7 @@ export default function App() {
         throw new Error("AI 返回的数据包含未知的结构，请稍后重试");
       }
     } catch (e: any) {
-      console.error(e);
+      console.warn(e);
       setErrorText(e.message || "请求 AI 服务失败，请重试");
     } finally {
       setIsGenerating(false);
@@ -203,6 +204,8 @@ export default function App() {
             <WeChatPreview
               article={article}
               themeId={settings.theme}
+              layoutId={settings.layout || "classic"}
+              onLayoutChange={(newLayout) => setSettings(p => ({ ...p, layout: newLayout }))}
               onUpdateArticle={handleUpdateArticle}
             />
           </motion.div>

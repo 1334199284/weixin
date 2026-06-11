@@ -1,20 +1,28 @@
 import { useState, useRef, useEffect } from "react";
 import { 
   Copy, Check, Image as ImageIcon, Sparkles, RefreshCw, Edit2, CheckSquare, 
-  ChevronRight, Heart, Share2, HelpCircle 
+  ChevronRight, Heart, Share2, HelpCircle, Trash2, Upload, Undo2
 } from "lucide-react";
 import { generateWeChatInlineHtml, WECHAT_THEMES } from "../lib/wechat-themes";
-import { WeChatArticle, ThemePreset } from "../types";
+import { WeChatArticle, ThemePreset, LayoutPreset } from "../types";
 import FishingVector from "./FishingVector";
 import { motion, AnimatePresence } from "motion/react";
 
 interface WeChatPreviewProps {
   article: WeChatArticle;
   themeId: ThemePreset;
+  layoutId: LayoutPreset;
+  onLayoutChange?: (layout: LayoutPreset) => void;
   onUpdateArticle: (updated: WeChatArticle) => void;
 }
 
-export default function WeChatPreview({ article, themeId, onUpdateArticle }: WeChatPreviewProps) {
+export default function WeChatPreview({ 
+  article, 
+  themeId, 
+  layoutId, 
+  onLayoutChange, 
+  onUpdateArticle 
+}: WeChatPreviewProps) {
   const theme = WECHAT_THEMES[themeId];
   const [copied, setCopied] = useState(false);
   const [copyHtmlSuccess, setCopyHtmlSuccess] = useState(false);
@@ -25,6 +33,7 @@ export default function WeChatPreview({ article, themeId, onUpdateArticle }: WeC
   // Graphic Style Selection: true = detailed SVG illustrations / false = photography images (default to photography)
   const [useVectorGraphics, setUseVectorGraphics] = useState<boolean>(false);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+  const [deletedImages, setDeletedImages] = useState<Record<string, boolean>>({});
 
   const handleImageError = (id: string) => {
     console.warn(`Unsplash image failed to load for [${id}]. Switching to custom SVG Vector illustration automatically.`);
@@ -48,6 +57,9 @@ export default function WeChatPreview({ article, themeId, onUpdateArticle }: WeC
     "https://images.unsplash.com/photo-1434064511983-18c6dae20ed5?auto=format&fit=crop&q=80&w=800"
   );
 
+  // Cover illustration URL - Hand-drawn line art illustration
+  const [coverIllustrationUrl, setCoverIllustrationUrl] = useState<string | undefined>(undefined);
+
   // Section illustration URLs - Curated, premium real-world lure gear photographs matching categories exactly
   const [sectionImages, setSectionImages] = useState<Record<string, string>>({
     rod: "https://images.unsplash.com/photo-1615887023516-9b6bcd559e87?auto=format&fit=crop&q=80&w=600",
@@ -56,6 +68,11 @@ export default function WeChatPreview({ article, themeId, onUpdateArticle }: WeC
     lures: "https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&q=80&w=600",
     accessories: "https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&q=80&w=600",
   });
+
+  // Section illustration URLs - Hand-drawn vector cartoon line-art illustrations
+  const [sectionIllustrations, setSectionIllustrations] = useState<Record<string, string>>({});
+
+  const [quotaNotice, setQuotaNotice] = useState<string | null>(null);
 
   const hiddenHtmlContainerRef = useRef<HTMLDivElement>(null);
 
@@ -87,10 +104,14 @@ ${article.outro}
     const formattedHtml = generateWeChatInlineHtml(
       article, 
       themeId, 
+      layoutId, // pass the currently active layout preset
       coverUrl, 
       sectionImages, 
       useVectorGraphics,
-      window.location.origin
+      window.location.origin,
+      coverIllustrationUrl,
+      sectionIllustrations,
+      deletedImages // pass deleted images record
     );
 
     const blob = new Blob([formattedHtml], { type: "text/html" });
@@ -100,7 +121,7 @@ ${article.outro}
       setCopyHtmlSuccess(true);
       setTimeout(() => setCopyHtmlSuccess(false), 3000);
     }).catch(err => {
-      console.error("Rich copy failed, fallback to plain-text copying", err);
+      console.warn("Rich copy failed, fallback to plain-text copying", err);
       // Fallback: copy raw HTML string
       navigator.clipboard.writeText(formattedHtml).then(() => {
         setCopyHtmlSuccess(true);
@@ -112,21 +133,37 @@ ${article.outro}
   // Generate Cover via API
   const generateCoverImage = async () => {
     setIsGeneratingCover(true);
+    setQuotaNotice(null);
+    const isIllustration = useVectorGraphics;
+    const styleParam = isIllustration ? "illustration" : "photography";
+    const promptText = isIllustration
+      ? "Minimalist flat vector illustration of a sport fisherman casting hook on wood dock at sunrise, elegant graphic design, soft aesthetic color, 简笔画, 手绘插画, 钓鱼, 比例完美"
+      : "Professional scenic landscape photography of deep lake lure fishing at foggy golden sunrise sunrise reflection fly fisherman, award winning banner, ultra detailed, 钓鱼, 路亚";
+
     try {
       const res = await fetch("/api/generate-illustration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          prompt: "Professional scenic landscape photography of deep lake lure fishing at foggy golden sunrise sunrise reflection fly fisherman, award winning banner, ultra detailed, 钓鱼, 路亚",
-          id: "cover" 
+          prompt: promptText,
+          id: "cover",
+          style: styleParam
         })
       });
       const data = await res.json();
       if (data.imageUrl) {
-        setCoverUrl(data.imageUrl);
+        if (isIllustration) {
+          setCoverIllustrationUrl(data.imageUrl);
+        } else {
+          setCoverUrl(data.imageUrl);
+        }
+        if (data.isMock) {
+          setQuotaNotice("由于当前云端 AI 绘图配额暂满，已为您无缝切换至高保真户外摄影备用池（效果绝佳，可多次重试）。");
+        }
       }
     } catch (e) {
-      console.error("Cover image generation failed", e);
+      console.warn("Cover image generation failed", e);
+      setQuotaNotice("由于当前云端 AI 绘图配额暂满，已为您无缝切换至高保真户外摄影备用池。");
     } finally {
       setIsGeneratingCover(false);
     }
@@ -135,43 +172,76 @@ ${article.outro}
   // Generate Section Image
   const generateSectionImage = async (id: string, keyword: string) => {
     setIsGeneratingSectionId(id);
+    setQuotaNotice(null);
+    const isIllustration = useVectorGraphics;
+    const styleParam = isIllustration ? "illustration" : "photography";
+    const promptText = isIllustration
+      ? `Simple minimalist cartoon line drawing sketch of lure tackle: ${keyword}, clean flat vector, white background, soft pastels, 简笔画, 手绘插画, 钓鱼, 比例完美`
+      : `Extreme close up photography of high performance professional lure fishing equipment: ${keyword}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`;
+
     try {
       const res = await fetch("/api/generate-illustration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          prompt: `Extreme close up photography of high performance professional lure fishing equipment: ${keyword}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`,
-          id: id 
+          prompt: promptText,
+          id: id,
+          style: styleParam
         })
       });
       const data = await res.json();
       if (data.imageUrl) {
-        setSectionImages(prev => ({ ...prev, [id]: data.imageUrl }));
+        if (isIllustration) {
+          setSectionIllustrations(prev => ({ ...prev, [id]: data.imageUrl }));
+        } else {
+          setSectionImages(prev => ({ ...prev, [id]: data.imageUrl }));
+        }
+        if (data.isMock) {
+          setQuotaNotice("由于当前云端 AI 绘图配额暂满，已为您无缝切换至高保真户外摄影备用池（效果绝佳，可多次重试）。");
+        }
       }
     } catch (e) {
-      console.error("Section illustration creation failed", e);
+      console.warn("Section illustration creation failed", e);
+      setQuotaNotice("由于当前云端 AI 绘图配额暂满，已为您无缝切换至高保真户外摄影备用池。");
     } finally {
       setIsGeneratingSectionId(null);
     }
   };
 
-  // Generate All Real Photography sequentially using high performance prompts
-  const regenerateAllPhotography = async () => {
+  // Generate All Real Photography or Vector Illustrations sequentially using high performance prompts
+  const regenerateAllArticlesImages = async () => {
     setIsGeneratingAll(true);
+    setQuotaNotice(null);
+    let mockActivated = false;
+    const isIllustration = useVectorGraphics;
+    const styleParam = isIllustration ? "illustration" : "photography";
+
     try {
       // 1. Cover
       setIsGeneratingCover(true);
+      const coverPromptText = isIllustration
+        ? "Minimalist flat vector illustration of a sport fisherman casting hook on wood dock at sunrise, elegant graphic design, soft aesthetic color, 简笔画, 手绘插画, 钓鱼, 比例完美"
+        : "Professional scenic landscape photography of deep lake lure fishing at foggy golden sunrise sunrise reflection fly fisherman, award winning banner, ultra detailed, 钓鱼, 路亚";
+
       const coverRes = await fetch("/api/generate-illustration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          prompt: "Professional scenic landscape photography of deep lake lure fishing at foggy golden sunrise sunrise reflection fly fisherman, award winning banner, ultra detailed, 钓鱼, 路亚",
-          id: "cover" 
+          prompt: coverPromptText,
+          id: "cover",
+          style: styleParam
         })
       });
       const coverData = await coverRes.json();
       if (coverData.imageUrl) {
-        setCoverUrl(coverData.imageUrl);
+        if (isIllustration) {
+          setCoverIllustrationUrl(coverData.imageUrl);
+        } else {
+          setCoverUrl(coverData.imageUrl);
+        }
+        if (coverData.isMock) {
+          mockActivated = true;
+        }
       }
       setIsGeneratingCover(false);
 
@@ -187,21 +257,38 @@ ${article.outro}
       for (const id of ["rod", "reel", "line", "lures", "accessories"]) {
         const kw = secImagePromptMap[id];
         setIsGeneratingSectionId(id);
+        const sectionPromptText = isIllustration
+          ? `Simple minimalist cartoon line drawing sketch of lure tackle: ${kw}, clean flat vector, white background, soft pastels, 简笔画, 手绘插画, 钓鱼, 比例完美`
+          : `Extreme close up photography of high performance professional lure fishing equipment: ${kw}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`;
+
         const secRes = await fetch("/api/generate-illustration", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
-            prompt: `Extreme close up photography of high performance professional lure fishing equipment: ${kw}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`,
-            id: id 
+            prompt: sectionPromptText,
+            id: id,
+            style: styleParam
           })
         });
         const secData = await secRes.json();
         if (secData.imageUrl) {
-          setSectionImages(prev => ({ ...prev, [id]: secData.imageUrl }));
+          if (isIllustration) {
+            setSectionIllustrations(prev => ({ ...prev, [id]: secData.imageUrl }));
+          } else {
+            setSectionImages(prev => ({ ...prev, [id]: secData.imageUrl }));
+          }
+          if (secData.isMock) {
+            mockActivated = true;
+          }
         }
       }
+
+      if (mockActivated) {
+        setQuotaNotice("由于云端 AI 绘图配额受限（429 频控），系统已为您无缝切换至高保真路亚户外备选摄影库！");
+      }
     } catch (e) {
-      console.error("Failed to batch regenerate photography", e);
+      console.warn("Failed to batch regenerate images", e);
+      setQuotaNotice("AI 一键绘图频率受限，已为您无缝启动备用高质量图片池。");
     } finally {
       setIsGeneratingSectionId(null);
       setIsGeneratingCover(false);
@@ -256,6 +343,149 @@ ${article.outro}
     setEditingField(null);
   };
 
+  const handleLocalImageUpload = (id: string, base64Data: string) => {
+    if (id === "cover") {
+      if (useVectorGraphics) {
+        setCoverIllustrationUrl(base64Data);
+      } else {
+        setCoverUrl(base64Data);
+      }
+    } else {
+      if (useVectorGraphics) {
+        setSectionIllustrations(prev => ({ ...prev, [id]: base64Data }));
+      } else {
+        setSectionImages(prev => ({ ...prev, [id]: base64Data }));
+      }
+    }
+    setDeletedImages(prev => ({ ...prev, [id]: false }));
+  };
+
+  const renderSectionGraphic = (sec: any, secImagePromptMap: Record<string, string>) => {
+    const id = sec.id;
+    if (deletedImages[id]) {
+      return (
+        <div className="border border-dashed border-gray-200 bg-gray-50/50 rounded-xl p-3.5 my-2 flex flex-col items-center justify-center text-center space-y-1.5 aspect-[16/9]">
+          <span className="text-gray-400 text-[10px] font-semibold">🚫 该项插图已被隐藏 (拷贝时不包含)</span>
+          <div className="flex gap-2">
+            <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold py-1 px-2 rounded-md flex items-center gap-1 transition">
+              <Upload className="h-3 w-3" />
+              本地选择
+              <input 
+                type="file" 
+                accept="image/*" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => handleLocalImageUpload(id, ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                  }
+                }} 
+              />
+            </label>
+            <button
+              onClick={() => setDeletedImages(p => ({ ...p, [id]: false }))}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[9px] font-bold py-1 px-2 rounded-md flex items-center gap-1 transition"
+            >
+              <Undo2 className="h-3 w-3" />
+              恢复默认
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="relative group rounded-lg overflow-hidden aspect-[16/9] my-2 border border-gray-100 bg-zinc-50 flex items-center justify-center">
+        <AnimatePresence mode="wait">
+          {useVectorGraphics ? (
+            sectionIllustrations[id] ? (
+              <motion.img 
+                key={`sec-illustration-${id}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                src={getProxiedUrl(sectionIllustrations[id])} 
+                alt={sec.title} 
+                className="w-full h-full object-cover absolute inset-0"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <motion.div 
+                key={`sec-vector-${id}`}
+                className="w-full h-full absolute inset-0 flex items-center justify-center animate-fade-in"
+              >
+                <FishingVector id={id} themeId={themeId} className="w-full h-full" />
+              </motion.div>
+            )
+          ) : (
+            !imageErrors[id] && (
+              <motion.img 
+                key={`sec-photo-${id}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                src={getProxiedUrl(sectionImages[id] || "https://images.unsplash.com/photo-1434064511983-18c6dae20ed5?auto=format&fit=crop&q=80&w=600")} 
+                alt={sec.title} 
+                className="w-full h-full object-cover absolute inset-0"
+                referrerPolicy="no-referrer"
+                onError={() => handleImageError(id)}
+              />
+            )
+          )}
+        </AnimatePresence>
+
+        {/* Media Controls Hover Overlay */}
+        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-between p-2 select-none z-10">
+          <div className="flex justify-end gap-1">
+            <button
+              onClick={() => setDeletedImages(p => ({ ...p, [id]: true }))}
+              className="bg-red-600 hover:bg-red-700 text-white p-1 rounded-md transition"
+              title="隐藏/删除此图"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+          
+          <div className="flex justify-center gap-1.5 mb-1">
+            <button
+              onClick={() => generateSectionImage(id, secImagePromptMap[id] || sec.title)}
+              disabled={isGeneratingSectionId !== null}
+              className="bg-white/95 hover:bg-white text-zinc-900 text-[9px] font-bold py-1 px-2 rounded-md flex items-center gap-1 transition shadow-sm"
+            >
+              <RefreshCw className={`h-2.5 w-2.5 ${isGeneratingSectionId === id ? "animate-spin" : ""}`} />
+              AI重绘
+            </button>
+            
+            <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold py-1 px-2 rounded-md flex items-center gap-1 transition shadow-sm">
+              <Upload className="h-2.5 w-2.5" />
+              本地上传
+              <input 
+                type="file" 
+                accept="image/*" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => handleLocalImageUpload(id, ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                  }
+                }} 
+              />
+            </label>
+          </div>
+        </div>
+
+        {isGeneratingSectionId === id && (
+          <div className="absolute inset-0 bg-zinc-950/70 flex flex-col items-center justify-center text-white text-[10px] space-y-1 select-none">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-emerald-500 border-t-transparent animate-spin mb-1" />
+            <span>生成特写...</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full space-y-4">
       {/* Top action toolbar */}
@@ -285,17 +515,15 @@ ${article.outro}
             </button>
           </div>
 
-          {!useVectorGraphics && (
-            <button
-              onClick={regenerateAllPhotography}
-              disabled={isGeneratingAll}
-              className={`px-3 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${isGeneratingAll ? "animate-pulse" : ""}`}
-              title="一键基于“钓鱼”、“路亚”极速批量更新并生成所有写实户外摄影！"
-            >
-              <RefreshCw className={`h-3 w-3 text-emerald-600 ${isGeneratingAll ? "animate-spin" : ""}`} />
-              {isGeneratingAll ? "重新生成摄影中..." : "重新自动重绘摄影"}
-            </button>
-          )}
+          <button
+            onClick={regenerateAllArticlesImages}
+            disabled={isGeneratingAll}
+            className={`px-3 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${isGeneratingAll ? "animate-pulse" : ""}`}
+            title={useVectorGraphics ? "一键极速批量重绘并生成所有手绘插画！" : "一键极速批量重绘并生成所有写实户外摄影！"}
+          >
+            <RefreshCw className={`h-3 w-3 text-emerald-600 ${isGeneratingAll ? "animate-spin" : ""}`} />
+            {isGeneratingAll ? (useVectorGraphics ? "批量手绘重绘中..." : "批量摄影重绘中...") : (useVectorGraphics ? "AI一键重绘插画配图" : "AI一键重绘摄影配图")}
+          </button>
         </div>
 
         <div className="flex gap-2 w-full md:w-auto justify-end">
@@ -324,11 +552,54 @@ ${article.outro}
         </div>
       </div>
 
+      {/* Quick Layout Selection Tab Bar (As requested, actual layout selection layout changes) */}
+      <div className="bg-slate-50 p-1.5 rounded-2xl border border-gray-150 flex flex-wrap gap-1.5 items-center select-none shadow-2xs">
+        <span className="text-xs font-bold text-gray-400 px-2 flex items-center gap-1.5 shrink-0">
+          💅 快捷切换版式风格:
+        </span>
+        <div className="flex flex-wrap gap-1">
+          {[
+            { id: "classic", name: "极简经典 (Classic)", icon: "📋" },
+            { id: "split", name: "微风卡片 (Split Card)", icon: "🎴" },
+            { id: "hybrid", name: "标题融合 (Hybrid)", icon: "🎨" },
+            { id: "clean_accent", name: "极客少数派 (Geek)", icon: "💻" },
+            { id: "fresh_borderless", name: "极简留白 (Fresh)", icon: "🍃" },
+            { id: "bubble_fresh", name: "清新露珠 (Mint)", icon: "💧" }
+          ].map(lay => {
+            const active = layoutId === lay.id;
+            return (
+              <button
+                key={lay.id}
+                onClick={() => onLayoutChange && onLayoutChange(lay.id as LayoutPreset)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  active 
+                    ? "bg-white text-emerald-700 shadow-xs border border-gray-200" 
+                    : "text-gray-500 hover:text-gray-800 hover:bg-white/50"
+                }`}
+              >
+                <span>{lay.icon}</span>
+                <span>{lay.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* WeChat styling tooltip notice */}
       {copyHtmlSuccess && (
         <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs py-2 px-4 rounded-xl flex items-center justify-between animate-fade-in">
           <span>🚀 <b>复刻成功！</b>你可直接在微信公众号后台 (mp.weixin.qq.com) 编辑框中直接按 <b>Ctrl+V (Command+V)</b> 黏贴。所有精美的绿/蓝/橙彩色标题、带阴影的避坑卡片都会一模一样保留！</span>
           <button onClick={() => setCopyHtmlSuccess(false)} className="font-bold underline cursor-pointer ml-2">关闭</button>
+        </div>
+      )}
+
+      {/* Quota limit tooltip notice */}
+      {quotaNotice && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs py-2 px-4 rounded-xl flex items-center justify-between gap-1.5 animate-fade-in">
+          <span className="flex items-center gap-1.5">
+            ⚠️ <b>绘制状态提示:</b> {quotaNotice}
+          </span>
+          <button onClick={() => setQuotaNotice(null)} className="font-bold text-amber-900 hover:text-amber-950 underline cursor-pointer shrink-0">关闭</button>
         </div>
       )}
 
@@ -393,52 +664,125 @@ ${article.outro}
           </div>
 
           {/* Article Header Photo Banner */}
-          <div className="relative group rounded-xl overflow-hidden aspect-[16/9] bg-zinc-100 border border-gray-100 flex items-center justify-center">
-            <AnimatePresence mode="wait">
-              {(!imageErrors["cover"] && !useVectorGraphics) ? (
-                <motion.img 
-                  key="cover-photo"
-                  initial={{ opacity: 0, filter: "blur(12px)", scale: 0.95 }}
-                  animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
-                  exit={{ opacity: 0, filter: "blur(12px)", scale: 1.05 }}
-                  transition={{ duration: 0.45, ease: "easeInOut" }}
-                  src={getProxiedUrl(coverUrl)} 
-                  alt="Article Cover" 
-                  className="w-full h-full object-cover absolute inset-0"
-                  referrerPolicy="no-referrer"
-                  onError={() => handleImageError("cover")}
-                />
-              ) : (
-                <motion.div 
-                  key="cover-vector"
-                  initial={{ opacity: 0, filter: "blur(12px)", scale: 0.95 }}
-                  animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
-                  exit={{ opacity: 0, filter: "blur(12px)", scale: 1.05 }}
-                  transition={{ duration: 0.45, ease: "easeInOut" }}
-                  className="w-full h-full absolute inset-0 flex items-center justify-center"
+          {deletedImages["cover"] ? (
+            <div className="border-2 border-dashed border-gray-200 bg-gray-50/50 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-2.5 aspect-[16/9] select-none">
+              <span className="text-gray-400 text-[11px] font-semibold">🚫 封面图已删除 (拷贝时将不包含)</span>
+              <div className="flex gap-2">
+                <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition">
+                  <Upload className="h-3.5 w-3.5" />
+                  外部上传
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => handleLocalImageUpload("cover", ev.target?.result as string);
+                        reader.readAsDataURL(file);
+                      }
+                    }} 
+                  />
+                </label>
+                <button
+                  onClick={() => setDeletedImages(p => ({ ...p, cover: false }))}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition animate-fade-in"
                 >
-                  <FishingVector id="cover" themeId={themeId} className="w-full h-full" />
-                </motion.div>
-              )}
-            </AnimatePresence>
-            {/* Dark tint overlay on hover to generate banner */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
-              <button
-                onClick={generateCoverImage}
-                disabled={isGeneratingCover}
-                className="bg-white/90 text-zinc-900 hover:bg-white text-[11px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
-              >
-                <RefreshCw className={`h-3 w-3 ${isGeneratingCover ? "animate-spin" : ""}`} />
-                AI 重绘封面
-              </button>
-            </div>
-            {isGeneratingCover && (
-              <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-xs flex flex-col items-center justify-center text-white text-xs">
-                <Sparkles className="h-6 w-6 animate-bounce text-amber-400 mb-1" />
-                正在生成高清路亚封面...
+                  <Undo2 className="h-3 w-3" />
+                  恢复配图
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="relative group rounded-xl overflow-hidden aspect-[16/9] bg-zinc-100 border border-gray-100 flex items-center justify-center">
+              <AnimatePresence mode="wait">
+                {useVectorGraphics ? (
+                  coverIllustrationUrl ? (
+                    <motion.img 
+                      key="cover-illustration"
+                      initial={{ opacity: 0, filter: "blur(4px)", scale: 0.98 }}
+                      animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
+                      exit={{ opacity: 0 }}
+                      src={getProxiedUrl(coverIllustrationUrl)} 
+                      alt="Article Cover Illustration" 
+                      className="w-full h-full object-cover absolute inset-0"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <motion.div 
+                      key="cover-vector"
+                      className="w-full h-full absolute inset-0 flex items-center justify-center"
+                    >
+                      <FishingVector id="cover" themeId={themeId} className="w-full h-full" />
+                    </motion.div>
+                  )
+                ) : (
+                  !imageErrors["cover"] && (
+                    <motion.img 
+                      key="cover-photo"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      src={getProxiedUrl(coverUrl)} 
+                      alt="Article Cover" 
+                      className="w-full h-full object-cover absolute inset-0"
+                      referrerPolicy="no-referrer"
+                      onError={() => handleImageError("cover")}
+                    />
+                  )
+                )}
+              </AnimatePresence>
+
+              {/* Cover Media Overlays */}
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-between p-3 select-none z-10">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setDeletedImages(p => ({ ...p, cover: true }))}
+                    className="bg-red-600 hover:bg-red-700 text-white p-1.5 rounded-lg transition"
+                    title="删除隐藏此图片"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                
+                <div className="flex justify-center gap-2">
+                  <button
+                    onClick={generateCoverImage}
+                    disabled={isGeneratingCover}
+                    className="bg-white/95 hover:bg-white text-zinc-900 text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${isGeneratingCover ? "animate-spin" : ""}`} />
+                    AI配图重绘
+                  </button>
+                  
+                  <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm">
+                    <Upload className="h-3 w-3" />
+                    本地置换
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => handleLocalImageUpload("cover", ev.target?.result as string);
+                          reader.readAsDataURL(file);
+                        }
+                      }} 
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {isGeneratingCover && (
+                <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-xs flex flex-col items-center justify-center text-white text-xs z-25 select-none">
+                  <Sparkles className="h-6 w-6 animate-bounce text-amber-400 mb-1" />
+                  正在生成高清路亚封面...
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Catchy intro paragraph */}
           <div className="group relative bg-zinc-50 border border-dashed border-gray-200 rounded-xl p-3.5 my-2">
@@ -481,28 +825,42 @@ ${article.outro}
                 lures: "selection of hard lures minnows and soft grubs, flatlay",
                 accessories: "lure pliers, fish grip, polarized sunglasses set",
               };
-              
-              return (
-                <section key={sec.id} className="space-y-3">
-                  
-                  {/* Topic badge & title combined */}
-                  <div className="group relative pb-1">
-                    {editingField?.type === "section-title" && editingField.sectionId === sec.id ? (
-                      <div className="flex gap-1.5 w-full">
-                        <input
-                          type="text"
-                          value={tempText}
-                          onChange={(e) => setTempText(e.target.value)}
-                          className="flex-1 text-xs p-1 border border-emerald-400 rounded-lg outline-hidden"
-                          autoFocus
-                        />
-                        <button onClick={saveEdit} className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold">保存</button>
-                      </div>
-                    ) : (
-                      <h2 className="text-sm font-bold tracking-tight pr-5 block clear-both" style={{ color: theme.primaryColor, lineHeight: '1.4' }}>
-                        <span className={`float-left text-[10px] font-bold w-8 text-center h-[16px] leading-[16px] rounded-xs mr-2 mb-0 mt-[1.5px] overflow-hidden ${theme.accentBadge}`}>
-                          0{index + 1}
-                        </span>
+
+              // Standard editable titles and subtitles
+              const renderedTitleText = (
+                <div className="group relative">
+                  {editingField?.type === "section-title" && editingField.sectionId === sec.id ? (
+                    <div className="flex gap-1.5 w-full mt-1">
+                      <input
+                        type="text"
+                        value={tempText}
+                        onChange={(e) => setTempText(e.target.value)}
+                        className="flex-1 text-xs p-1 border border-emerald-400 rounded-lg outline-hidden"
+                        autoFocus
+                      />
+                      <button onClick={saveEdit} className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold shrink-0">保存</button>
+                    </div>
+                  ) : (
+                    <div className="relative pr-5 group">
+                      <h2 className={`font-bold tracking-tight leading-snug`} style={{ 
+                        color: theme.primaryColor,
+                        fontSize: "14px"
+                      }}>
+                        {layoutId === "classic" && (
+                          <span className={`float-left text-[10px] font-bold w-7 text-center h-[16px] leading-[16px] rounded-xs mr-2 mb-0 mt-[2px] overflow-hidden ${theme.accentBadge}`}>
+                            0{index + 1}
+                          </span>
+                        )}
+                        {layoutId === "fresh_borderless" && (
+                          <span className="mr-1.5 text-xs font-mono font-extrabold tracking-wider" style={{ color: theme.primaryColor }}>
+                            ◆ 0{index + 1}
+                          </span>
+                        )}
+                        {layoutId === "bubble_fresh" && (
+                          <span className="mr-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold inline-block text-white" style={{ backgroundColor: theme.primaryColor }}>
+                            {index + 1}
+                          </span>
+                        )}
                         {sec.title.replace(/^\d+\s+/, "")}
                         <button 
                           onClick={() => startEdit("section-title", sec.title, sec.id)}
@@ -511,135 +869,51 @@ ${article.outro}
                           <Edit2 className="h-2.5 w-2.5" />
                         </button>
                       </h2>
-                    )}
-                  </div>
+                    </div>
+                  )}
+                </div>
+              );
 
-                  {/* Section sub-headline */}
-                  <div className="group relative -mt-2">
-                    {editingField?.type === "section-subtitle" && editingField.sectionId === sec.id ? (
-                      <div className="flex gap-1.5 w-full">
-                        <input
-                          type="text"
-                          value={tempText}
-                          onChange={(e) => setTempText(e.target.value)}
-                          className="flex-1 text-11px p-1 border border-emerald-400 rounded-lg outline-hidden"
-                          autoFocus
-                        />
-                        <button onClick={saveEdit} className="px-2 py-0.5 bg-emerald-600 text-white rounded-lg text-[10px] font-bold">保存</button>
-                      </div>
-                    ) : (
-                      <div className="pr-4">
-                        <p className="text-[11px] text-gray-400 font-medium italic pl-1">
-                          {sec.subtitle}
-                        </p>
-                        <button 
-                          onClick={() => startEdit("section-subtitle", sec.subtitle, sec.id)}
-                          className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
-                        >
-                          <Edit2 className="h-2.5 w-2.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Curated/AI illustration card inside Section */}
-                  <div className="relative group rounded-lg overflow-hidden aspect-[16/9] my-2 border border-gray-100 bg-zinc-50 flex items-center justify-center">
-                    <AnimatePresence mode="wait">
-                      {(!imageErrors[sec.id] && !useVectorGraphics) ? (
-                        <motion.img 
-                          key={`section-photo-${sec.id}`}
-                          initial={{ opacity: 0, filter: "blur(12px)", scale: 0.95 }}
-                          animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
-                          exit={{ opacity: 0, filter: "blur(12px)", scale: 1.05 }}
-                          transition={{ duration: 0.45, ease: "easeInOut" }}
-                          src={getProxiedUrl(sectionImages[sec.id] || "https://images.unsplash.com/photo-1434064511983-18c6dae20ed5?auto=format&fit=crop&q=80&w=600")} 
-                          alt={sec.title} 
-                          className="w-full h-full object-cover absolute inset-0"
-                          referrerPolicy="no-referrer"
-                          onError={() => handleImageError(sec.id)}
-                        />
-                      ) : (
-                        <motion.div 
-                          key={`section-vector-${sec.id}`}
-                          initial={{ opacity: 0, filter: "blur(12px)", scale: 0.95 }}
-                          animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
-                          exit={{ opacity: 0, filter: "blur(12px)", scale: 1.05 }}
-                          transition={{ duration: 0.45, ease: "easeInOut" }}
-                          className="w-full h-full absolute inset-0 flex items-center justify-center"
-                        >
-                          <FishingVector id={sec.id} themeId={themeId} className="w-full h-full" />
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                      <button
-                        onClick={() => generateSectionImage(sec.id, secImagePromptMap[sec.id] || sec.title)}
-                        disabled={isGeneratingSectionId !== null}
-                        className="bg-white/95 text-zinc-900 border border-gray-200 text-[10px] font-bold py-1 px-2.5 rounded-md flex items-center gap-1.5 shadow-sm transition"
+              const renderedSubtitleText = (
+                <div className="group relative">
+                  {editingField?.type === "section-subtitle" && editingField.sectionId === sec.id ? (
+                    <div className="flex gap-1.5 w-full mt-1">
+                      <input
+                        type="text"
+                        value={tempText}
+                        onChange={(e) => setTempText(e.target.value)}
+                        className="flex-1 text-[11px] p-1 border border-emerald-400 rounded-lg outline-hidden"
+                        autoFocus
+                      />
+                      <button onClick={saveEdit} className="px-2 py-0.5 bg-emerald-600 text-white rounded-lg text-[10px] font-bold shrink-0">保存</button>
+                    </div>
+                  ) : (
+                    <div className="relative pr-4">
+                      <p className={`text-[10.5px] text-gray-400 font-medium italic ${layoutId === "split" ? "text-emerald-700/80 font-semibold" : "pl-1"}`}>
+                        {sec.subtitle}
+                      </p>
+                      <button 
+                        onClick={() => startEdit("section-subtitle", sec.subtitle, sec.id)}
+                        className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
                       >
-                        <ImageIcon className="h-3 w-3 text-emerald-600" />
-                        AI一键重绘配图
+                        <Edit2 className="h-2.5 w-2.5" />
                       </button>
                     </div>
-                    {isGeneratingSectionId === sec.id && (
-                      <div className="absolute inset-0 bg-zinc-950/70 flex flex-col items-center justify-center text-white text-[10px] space-y-1">
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-emerald-500 border-t-transparent" />
-                        <span>正在生成绝美特写...</span>
-                      </div>
-                    )}
-                  </div>
+                  )}
+                </div>
+              );
 
-                  {/* Paragraph list of section content */}
-                  <div className="space-y-2">
-                    {sec.paragraphs.map((p, pIndex) => (
-                      <div key={pIndex} className="group relative">
-                        {editingField?.type === "section-paragraph" && editingField.sectionId === sec.id && editingField.index === pIndex ? (
-                          <div className="flex flex-col gap-1.5 w-full mt-1">
-                            <textarea
-                              value={tempText}
-                              onChange={(e) => setTempText(e.target.value)}
-                              rows={3}
-                              className="w-full text-xs p-1.5 border border-emerald-400 rounded-lg outline-hidden leading-relaxed text-gray-700"
-                              autoFocus
-                            />
-                            <div className="flex justify-end gap-1.5">
-                              <button onClick={() => setEditingField(null)} className="px-2 py-0.5 border border-gray-200 rounded-lg text-[10px]">取消</button>
-                              <button onClick={saveEdit} className="px-2.5 py-0.5 bg-emerald-600 text-white rounded-lg text-[10px] font-bold">确定</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="relative pr-5">
-                            <p className="text-xs text-gray-700 leading-relaxed text-justify whitespace-pre-wrap pl-1">
-                              {p}
-                            </p>
-                            <button 
-                              onClick={() => startEdit("section-paragraph", p, sec.id, pIndex)}
-                              className="absolute right-0 top-0.5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
-                            >
-                              <Edit2 className="h-2.5 w-2.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Segment Pro Tip */}
-                  <div 
-                    className="p-3 transition-colors border-l-4 rounded-r-lg"
-                    style={{ 
-                      backgroundColor: theme.secondaryColor,
-                      borderColor: theme.primaryColor 
-                    }}
-                  >
-                    <div className="group relative">
-                      {editingField?.type === "section-tips" && editingField.sectionId === sec.id ? (
-                        <div className="flex flex-col gap-1.5 w-full">
+              const renderedParagraphs = (
+                <div className="space-y-1.5">
+                  {sec.paragraphs.map((p, pIndex) => (
+                    <div key={pIndex} className="group relative">
+                      {editingField?.type === "section-paragraph" && editingField.sectionId === sec.id && editingField.index === pIndex ? (
+                        <div className="flex flex-col gap-1.5 w-full mt-1">
                           <textarea
                             value={tempText}
                             onChange={(e) => setTempText(e.target.value)}
-                            rows={2}
-                            className="w-full text-xs p-1.5 border border-emerald-400 rounded-lg outline-hidden leading-normal text-gray-700"
+                            rows={3}
+                            className="w-full text-xs p-1.5 border border-emerald-400 rounded-lg outline-hidden leading-relaxed text-gray-700 font-sans"
                             autoFocus
                           />
                           <div className="flex justify-end gap-1.5">
@@ -648,26 +922,218 @@ ${article.outro}
                           </div>
                         </div>
                       ) : (
-                        <div className="relative pr-5 pl-1">
-                          <strong className="text-[11px] block underline mb-1" style={{ color: theme.primaryColor }}>
-                            💡 避坑指南 / 实用秘籍
-                          </strong>
-                          <p className="text-[11px] text-gray-600 leading-normal">
-                            {sec.proTips}
+                        <div className="relative pr-5">
+                          <p className="text-xs text-gray-700 leading-relaxed text-justify whitespace-pre-wrap font-sans">
+                            {p}
                           </p>
                           <button 
-                            onClick={() => startEdit("section-tips", sec.proTips, sec.id)}
-                            className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
+                            onClick={() => startEdit("section-paragraph", p, sec.id, pIndex)}
+                            className="absolute right-0 top-0.5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
                           >
                             <Edit2 className="h-2.5 w-2.5" />
                           </button>
                         </div>
                       )}
                     </div>
-                  </div>
-
-                </section>
+                  ))}
+                </div>
               );
+
+              const renderedProTip = (
+                <div className="group relative">
+                  {editingField?.type === "section-tips" && editingField.sectionId === sec.id ? (
+                    <div className="flex flex-col gap-1.5 w-full mt-1.5">
+                      <textarea
+                        value={tempText}
+                        onChange={(e) => setTempText(e.target.value)}
+                        rows={2}
+                        className="w-full text-xs p-1.5 border border-emerald-400 rounded-lg outline-hidden leading-normal text-gray-700 font-sans"
+                        autoFocus
+                      />
+                      <div className="flex justify-end gap-1.5">
+                        <button onClick={() => setEditingField(null)} className="px-2 py-0.5 border border-gray-200 rounded-lg text-[10px]">取消</button>
+                        <button onClick={saveEdit} className="px-2.5 py-0.5 bg-emerald-600 text-white rounded-lg text-[10px] font-bold">确定</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative pr-5 pl-0.5">
+                      <strong className="text-[11px] block font-bold mb-1" style={{ color: theme.primaryColor }}>
+                        {layoutId === "clean_accent" ? "⚡ GEAR INSIGHT / 实战要领" : layoutId === "fresh_borderless" ? "🍀 FOCUS POINT / 重中之重" : layoutId === "bubble_fresh" ? "🍬 SWEET TIPS / 治愈秘笈" : "💡 避坑指南 / 实用秘籍"}
+                      </strong>
+                      <p className="text-[10.5px] text-gray-650 leading-relaxed font-sans">
+                        {sec.proTips}
+                      </p>
+                      <button 
+                        onClick={() => startEdit("section-tips", sec.proTips, sec.id)}
+                        className="absolute right-0 top-0.5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
+                      >
+                        <Edit2 className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+
+              // 1. Classic minimal layout
+              if (layoutId === "classic") {
+                return (
+                  <section key={sec.id} className="space-y-3 animate-fade-in relative">
+                    {renderedTitleText}
+                    {renderedSubtitleText}
+                    {renderSectionGraphic(sec, secImagePromptMap)}
+                    {renderedParagraphs}
+                    <div className="p-3 border-l-3 rounded-r-lg" style={{ backgroundColor: theme.secondaryColor, borderColor: theme.primaryColor }}>
+                      {renderedProTip}
+                    </div>
+                  </section>
+                );
+              }
+
+              // 2. Air Breathable / Minimalist Accent layout (Fresh Airy style)
+              if (layoutId === "fresh_borderless") {
+                return (
+                  <section key={sec.id} className="space-y-4 pb-6 animate-fade-in relative">
+                    <div className="border-b pb-2" style={{ borderBottomColor: theme.primaryColor + "30" }}>
+                      {renderedTitleText}
+                    </div>
+                    {renderedSubtitleText}
+                    {renderSectionGraphic(sec, secImagePromptMap)}
+                    {renderedParagraphs}
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-gray-100">
+                      {renderedProTip}
+                    </div>
+                  </section>
+                );
+              }
+
+              // 3. Float Split Card layout
+              if (layoutId === "split") {
+                return (
+                  <section key={sec.id} className="p-4 bg-zinc-50 border border-gray-150 rounded-2xl shadow-2xs space-y-3.5 animate-fade-in relative">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-gray-200">
+                      <div className="flex-1 min-w-0 pr-4">
+                        {renderedTitleText}
+                      </div>
+                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full text-white shrink-0 self-start" style={{ backgroundColor: theme.primaryColor }}>
+                        SEC 0{index + 1}
+                      </span>
+                    </div>
+                    {renderedSubtitleText}
+                    {renderSectionGraphic(sec, secImagePromptMap)}
+                    {renderedParagraphs}
+                    <div className="p-3 bg-white border border-gray-100 rounded-xl">
+                      {renderedProTip}
+                    </div>
+                  </section>
+                );
+              }
+
+              // 4. Geek border-accent layout (SSPAI style)
+              if (layoutId === "clean_accent") {
+                return (
+                  <section key={sec.id} className="space-y-3 pb-4 border-b border-gray-120 animate-fade-in relative">
+                    <div className="group relative pl-3 border-l-4" style={{ borderColor: theme.primaryColor }}>
+                      {editingField?.type === "section-title" && editingField.sectionId === sec.id ? (
+                        <div className="flex gap-1.5 w-full mt-1">
+                          <input
+                            type="text"
+                            value={tempText}
+                            onChange={(e) => setTempText(e.target.value)}
+                            className="flex-1 text-xs p-1 border border-emerald-400 rounded-lg outline-hidden text-gray-800"
+                            autoFocus
+                          />
+                          <button onClick={saveEdit} className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold shrink-0">保存</button>
+                        </div>
+                      ) : (
+                        <div className="relative pr-5">
+                          <h2 className="font-extrabold tracking-tight text-gray-900 leading-snug flex items-center gap-2" style={{ fontSize: "14.5px" }}>
+                            <span className="text-[10.5px] font-mono tracking-wider font-bold select-none shrink-0" style={{ color: theme.primaryColor }}>
+                              0{index + 1} //
+                            </span>
+                            <span className="break-words">{sec.title.replace(/^\d+\s+/, "")}</span>
+                            <button 
+                              onClick={() => startEdit("section-title", sec.title, sec.id)}
+                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition ml-1 shrink-0"
+                            >
+                              <Edit2 className="h-2.5 w-2.5" />
+                            </button>
+                          </h2>
+                        </div>
+                      )}
+                    </div>
+                    <div className="pl-3.5 space-y-3.5">
+                      {renderedSubtitleText}
+                      {renderSectionGraphic(sec, secImagePromptMap)}
+                      {renderedParagraphs}
+                      <div className="p-3 bg-zinc-50 border-l-3 rounded-r-lg" style={{ borderColor: theme.primaryColor }}>
+                        {renderedProTip}
+                      </div>
+                    </div>
+                  </section>
+                );
+              }
+
+              // 5. Cute Macaron / Fresh Mint style with soft shadows
+              if (layoutId === "bubble_fresh") {
+                return (
+                  <section key={sec.id} className="p-5 bg-white border border-gray-100/80 rounded-2xl shadow-xs hover:shadow-md transition space-y-4 animate-fade-in relative">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: theme.primaryColor }} />
+                      <div className="flex-1 min-w-0">
+                        {renderedTitleText}
+                      </div>
+                    </div>
+                    {renderedSubtitleText}
+                    {renderSectionGraphic(sec, secImagePromptMap)}
+                    {renderedParagraphs}
+                    <div className="p-3.5 rounded-xl bg-gray-50/30 border border-dashed" style={{ borderColor: theme.primaryColor + "40" }}>
+                      {renderedProTip}
+                    </div>
+                  </section>
+                );
+              }
+
+              // 5. Hybrid layout (Section title integrated directly into header, preventing inside duplicated title)
+              if (layoutId === "hybrid") {
+                return (
+                  <div key={sec.id} className="border-2 rounded-xl overflow-hidden bg-white animate-fade-in relative" style={{ borderColor: theme.primaryColor }}>
+                    {editingField?.type === "section-title" && editingField.sectionId === sec.id ? (
+                      <div className="flex gap-1.5 w-full bg-white p-2 border-b" style={{ borderBottomColor: theme.primaryColor }}>
+                        <input
+                          type="text"
+                          value={tempText}
+                          onChange={(e) => setTempText(e.target.value)}
+                          className="flex-1 text-xs p-1 border border-emerald-400 rounded-lg outline-hidden text-gray-800"
+                          autoFocus
+                        />
+                        <button onClick={saveEdit} className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-bold shrink-0">保存</button>
+                      </div>
+                    ) : (
+                      <div 
+                        className="text-white px-3.5 py-2.5 flex items-start text-[13px] font-bold select-none group/title relative cursor-pointer" 
+                        style={{ backgroundColor: theme.primaryColor }}
+                        onClick={() => startEdit("section-title", sec.title, sec.id)}
+                        title="点击直接编辑标题"
+                      >
+                        <span className="flex items-center gap-1.5 flex-1 min-w-0 break-words leading-relaxed">
+                          <span>0{index + 1} {sec.title.replace(/^\d+\s+/, "")}</span>
+                          <Edit2 className="h-3 w-3 opacity-0 group-hover/title:opacity-100 transition text-white/80 shrink-0 mt-0.5" />
+                        </span>
+                      </div>
+                    )}
+                    <div className="p-3.5 space-y-3">
+                      {renderedSubtitleText}
+                      {renderSectionGraphic(sec, secImagePromptMap)}
+                      {renderedParagraphs}
+                      <div className="p-3 border border-dashed rounded-lg bg-gray-50/30" style={{ borderColor: theme.primaryColor }}>
+                        {renderedProTip}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              return null;
             })}
           </div>
 

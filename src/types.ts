@@ -4,6 +4,7 @@ export interface ArticleSection {
   subtitle: string;
   paragraphs: string[];
   proTips: string;
+  imagePrompt?: string;
 }
 
 export interface WeChatArticle {
@@ -15,7 +16,8 @@ export interface WeChatArticle {
   outro: string;
 }
 
-export type ThemePreset = 'green' | 'blue' | 'orange' | 'minimalist';
+export type ThemePreset = 'green' | 'blue' | 'orange' | 'minimalist' | 'red' | 'purple' | 'gold' | 'forest';
+export type LayoutPreset = 'classic' | 'split' | 'hybrid' | 'clean_accent' | 'fresh_borderless' | 'bubble_fresh';
 
 export interface ThemeConfig {
   id: ThemePreset;
@@ -30,6 +32,7 @@ export interface ThemeConfig {
 export interface GenerationSettings {
   outline: string;
   theme: ThemePreset;
+  layout: LayoutPreset;
   level: 'Beginner' | 'Intermediate' | 'Expert';
   tone: 'Professional' | 'Enthusiastic' | 'Humorous' | 'Friendly';
   customPrompt: string;
