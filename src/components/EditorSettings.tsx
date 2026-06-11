@@ -1,15 +1,28 @@
-import { Fish, Compass, Sparkles, BookOpen, Layers, Check } from "lucide-react";
+import { useState } from "react";
+import { Fish, Compass, Sparkles, BookOpen, Layers, Check, Settings, Eye, EyeOff, Info } from "lucide-react";
 import { WECHAT_THEMES } from "../lib/wechat-themes";
-import { GenerationSettings, ThemePreset, LayoutPreset } from "../types";
+import { GenerationSettings, ThemePreset, LayoutPreset, AIConfig } from "../types";
 
 interface EditorSettingsProps {
   settings: GenerationSettings;
   onChange: (updates: Partial<GenerationSettings>) => void;
   onGenerate: () => void;
   isGenerating: boolean;
+  aiConfig: AIConfig;
+  onAiConfigChange: (updates: Partial<AIConfig>) => void;
 }
 
-export default function EditorSettings({ settings, onChange, onGenerate, isGenerating }: EditorSettingsProps) {
+export default function EditorSettings({ 
+  settings, 
+  onChange, 
+  onGenerate, 
+  isGenerating,
+  aiConfig,
+  onAiConfigChange
+}: EditorSettingsProps) {
+  const [showAiSetup, setShowAiSetup] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+
   const tones = [
     { id: "Friendly", name: "亲切幽默 (Warm & Witty)", desc: "适合大众群体，拉近距离" },
     { id: "Professional", name: "严谨专业 (Tech Pro)", desc: "多用术语，深入原理与技巧" },
@@ -22,6 +35,31 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
     { id: "Intermediate", name: "进阶提升 (Intermediate)", desc: "有抛投基础，探究微调与具体鱼情" },
     { id: "Expert", name: "骨灰钓手 (Expert)", desc: "发烧友级，专注装备发烧、调子细节与战术" },
   ];
+
+  const applyPreset = (presetName: string) => {
+    if (presetName === "siliconflow") {
+      onAiConfigChange({
+        provider: "custom",
+        baseUrl: "https://api.siliconflow.cn/v1",
+        textModel: "Qwen/Qwen2.5-72B-Instruct",
+        imageModel: "black-forest-labs/FLUX.1-schnell"
+      });
+    } else if (presetName === "deepseek") {
+      onAiConfigChange({
+        provider: "custom",
+        baseUrl: "https://api.deepseek.com/v1",
+        textModel: "deepseek-chat",
+        imageModel: "black-forest-labs/FLUX.1-schnell" // Recommend flux-schnell hosted on siliconflow or stability
+      });
+    } else if (presetName === "openrouter") {
+      onAiConfigChange({
+        provider: "custom",
+        baseUrl: "https://openrouter.ai/api/v1",
+        textModel: "qwen/qwen-2.5-72b-instruct",
+        imageModel: "black-forest-labs/flux-schnell"
+      });
+    }
+  };
 
   return (
     <div className="space-y-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs">
@@ -42,7 +80,7 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-gray-700">1. 内容大纲与素材</label>
         <p className="text-xs text-gray-400 leading-normal">
-          输入你所需的课程、装备清单、或灵感大纲。AI 将以此展开，融合生动的实战技巧与段落。
+          输入你所需的话题、装备清单、或灵感大纲。AI 将以此展开，融合生动的实战玩家技巧与温情分享。
         </p>
         <textarea
           value={settings.outline}
@@ -95,7 +133,7 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
               onClick={() => onChange({ tone: t.id as any })}
               className={`p-3 rounded-xl border text-left transition flex flex-col justify-between h-20 ${
                 settings.tone === t.id
-                  ? "border-emerald-500 bg-emerald-50/50"
+                   ? "border-emerald-500 bg-emerald-50/50"
                   : "border-gray-100 hover:border-gray-200"
               }`}
             >
@@ -188,9 +226,179 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
         </div>
       </div>
 
+      {/* Advanced AI Setup Section (New, requested by user) */}
+      <div className="space-y-2.5 border-t border-gray-100 pt-4">
+        <button
+          type="button"
+          onClick={() => setShowAiSetup(!showAiSetup)}
+          className="w-full flex items-center justify-between p-3.5 rounded-xl border border-dashed border-emerald-300/60 bg-emerald-50/10 text-emerald-950 text-xs font-bold hover:bg-emerald-50/30 transition text-left cursor-pointer"
+        >
+          <span className="flex items-center gap-2">
+            <Settings className="h-4 w-4 text-emerald-600 animate-spin-slow" />
+            <span>6. AI 智绘与写字大模型配置 (支持自定义 Qwen / 硅基 / DeepSeek)</span>
+          </span>
+          <span className="bg-emerald-100 text-emerald-800 text-[10px] py-0.5 px-2 rounded-full">
+            {showAiSetup ? "折叠配置" : aiConfig.provider === "custom" ? "已激活自定义 Qwen/其他" : "默认 Gemini"}
+          </span>
+        </button>
+
+        {showAiSetup && (
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/60 space-y-4 animate-slide-down">
+            {/* Provider Tabs */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-bold text-gray-600">模型提供商 (AI Provider)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onAiConfigChange({ provider: "gemini" })}
+                  className={`py-2 px-3 rounded-lg text-xs font-semibold border transition ${
+                    aiConfig.provider === "gemini"
+                      ? "bg-white border-zinc-800 text-zinc-900 shadow-xs"
+                      : "bg-slate-100 border-gray-200 text-gray-500 hover:bg-slate-150"
+                  }`}
+                >
+                  Google Gemini (内置)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAiConfigChange({ provider: "custom" })}
+                  className={`py-2 px-3 rounded-lg text-xs font-semibold border transition ${
+                    aiConfig.provider === "custom"
+                      ? "bg-white border-emerald-600 text-emerald-950 shadow-xs"
+                      : "bg-slate-100 border-gray-200 text-gray-500 hover:bg-slate-150"
+                  }`}
+                >
+                  自定义第三方 API (汇入 Qwen/其它)
+                </button>
+              </div>
+            </div>
+
+            {/* If Custom selected */}
+            {aiConfig.provider === "custom" && (
+              <div className="space-y-3 pt-1 border-t border-slate-200/50">
+                {/* Micro Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-gray-400">一键填充预设:</span>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("siliconflow")}
+                    className="text-[10px] bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-100 py-0.5 px-2 rounded font-medium transition cursor-pointer"
+                  >
+                    硅基流动 (SiliconFlow)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("deepseek")}
+                    className="text-[10px] bg-indigo-50 text-indigo-800 hover:bg-indigo-100 border border-indigo-100 py-0.5 px-2 rounded font-medium transition cursor-pointer"
+                  >
+                    DeepSeek 官方
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("openrouter")}
+                    className="text-[10px] bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-100 py-0.5 px-2 rounded font-medium transition cursor-pointer"
+                  >
+                    OpenRouter
+                  </button>
+                </div>
+
+                {/* Base URL */}
+                <div className="space-y-1">
+                  <span className="text-[11px] font-bold text-gray-500">API 接口地址 (Base URL)</span>
+                  <input
+                    type="text"
+                    value={aiConfig.baseUrl}
+                    onChange={(e) => onAiConfigChange({ baseUrl: e.target.value })}
+                    className="w-full text-xs p-2.5 bg-white border border-slate-200 focus:border-emerald-500 outline-hidden rounded-lg font-mono"
+                    placeholder="https://api.siliconflow.cn/v1"
+                  />
+                </div>
+
+                {/* API Key */}
+                <div className="space-y-1">
+                  <span className="text-[11px] font-bold text-gray-500">API 秘钥 (API Key)</span>
+                  <div className="relative">
+                    <input
+                      type={showKey ? "text" : "password"}
+                      value={aiConfig.apiKey}
+                      onChange={(e) => onAiConfigChange({ apiKey: e.target.value })}
+                      className="w-full text-xs p-2.5 pr-9 bg-white border border-slate-200 focus:border-emerald-500 outline-hidden rounded-lg font-mono"
+                      placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey(!showKey)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    >
+                      {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Models Config */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold text-gray-500">文章写字模型</span>
+                    <input
+                      type="text"
+                      value={aiConfig.textModel}
+                      onChange={(e) => onAiConfigChange({ textModel: e.target.value })}
+                      className="w-full text-xs p-2 bg-white border border-slate-200 outline-hidden rounded-lg font-mono font-medium"
+                      placeholder="e.g. Qwen/Qwen2.5-72B-Instruct"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold text-gray-500">配图生成模型</span>
+                    <input
+                      type="text"
+                      value={aiConfig.imageModel}
+                      onChange={(e) => onAiConfigChange({ imageModel: e.target.value })}
+                      className="w-full text-xs p-2 bg-white border border-slate-200 outline-hidden rounded-lg font-mono font-medium"
+                      placeholder="e.g. black-forest-labs/FLUX.1-schnell"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* If Gemini selected */}
+            {aiConfig.provider === "gemini" && (
+              <div className="space-y-3 pt-1 border-t border-slate-200/50">
+                <div className="flex items-start gap-1.5 p-2 bg-zinc-100 text-zinc-700 rounded-lg text-[10px] leading-relaxed">
+                  <Info className="h-3.5 w-3.5 text-zinc-500 shrink-0 mt-0.5" />
+                  <span>
+                    系统已内置默认 Gemini key。但由于该 key 属于共享并发池，偶尔会产生 429 配额限频报错。如果您有独占 key，可在下方填入（本地私密保存）。
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[11px] font-bold text-gray-500">您的 Gemini 独占 API Key (可选自填)</span>
+                  <div className="relative">
+                    <input
+                      type={showKey ? "text" : "password"}
+                      value={aiConfig.apiKey}
+                      onChange={(e) => onAiConfigChange({ apiKey: e.target.value })}
+                      className="w-full text-xs p-2.5 pr-9 bg-white border border-slate-200 focus:border-zinc-800 outline-hidden rounded-lg font-mono"
+                      placeholder="AI Studio 申请的 AIzaSy... 秘钥"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey(!showKey)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    >
+                      {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Custom prompt override */}
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-gray-700">6. 补充润色要求 (选填)</label>
+        <label className="block text-sm font-semibold text-gray-700">7. 补充润色要求 (选填)</label>
         <input
           type="text"
           value={settings.customPrompt}
@@ -204,7 +412,7 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
       <button
         onClick={onGenerate}
         disabled={isGenerating}
-        className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 disabled:bg-emerald-300 disabled:shadow-none"
+        className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 disabled:bg-emerald-300 disabled:shadow-none cursor-pointer"
       >
         <Sparkles className={`h-5 w-5 ${isGenerating ? "animate-spin" : ""}`} />
         {isGenerating ? "正在通过 AI 精雕细琢文章..." : "一键 AI 生成 & 全新排版"}
@@ -212,3 +420,4 @@ export default function EditorSettings({ settings, onChange, onGenerate, isGener
     </div>
   );
 }
+

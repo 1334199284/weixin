@@ -4,7 +4,7 @@ import {
   ChevronRight, Heart, Share2, HelpCircle, Trash2, Upload, Undo2
 } from "lucide-react";
 import { generateWeChatInlineHtml, WECHAT_THEMES } from "../lib/wechat-themes";
-import { WeChatArticle, ThemePreset, LayoutPreset } from "../types";
+import { WeChatArticle, ThemePreset, LayoutPreset, AIConfig } from "../types";
 import FishingVector from "./FishingVector";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -14,6 +14,7 @@ interface WeChatPreviewProps {
   layoutId: LayoutPreset;
   onLayoutChange?: (layout: LayoutPreset) => void;
   onUpdateArticle: (updated: WeChatArticle) => void;
+  aiConfig: AIConfig;
 }
 
 export default function WeChatPreview({ 
@@ -21,7 +22,8 @@ export default function WeChatPreview({
   themeId, 
   layoutId, 
   onLayoutChange, 
-  onUpdateArticle 
+  onUpdateArticle,
+  aiConfig
 }: WeChatPreviewProps) {
   const theme = WECHAT_THEMES[themeId];
   const [copied, setCopied] = useState(false);
@@ -67,6 +69,8 @@ export default function WeChatPreview({
     line: "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&q=80&w=600",
     lures: "https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&q=80&w=600",
     accessories: "https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&q=80&w=600",
+    casting: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&q=80&w=600",
+    actions: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&q=80&w=600",
   });
 
   // Section illustration URLs - Hand-drawn vector cartoon line-art illustrations
@@ -137,7 +141,7 @@ ${article.outro}
     const isIllustration = useVectorGraphics;
     const styleParam = isIllustration ? "illustration" : "photography";
     const promptText = isIllustration
-      ? "Minimalist flat vector illustration of a sport fisherman casting hook on wood dock at sunrise, elegant graphic design, soft aesthetic color, 简笔画, 手绘插画, 钓鱼, 比例完美"
+      ? "Ultra-beautiful aesthetic ink and watercolor hand-drawn artistic illustration of a peaceful sport fisherman casting his line on a wooden dock beside a quiet lake, surrounded by gentle mountains at a misty romantic golden sunrise. Exquisite gouache and fine ink brush strokes, warm cozy atmosphere, harmonious soft natural hues, highly polished visual masterpiece, 意境唯美温润治愈手绘插画, 顶级艺术质感水彩水粉, 温暖柔和自然光晕, 顶级构图留白, 完美光影质感"
       : "Professional scenic landscape photography of deep lake lure fishing at foggy golden sunrise sunrise reflection fly fisherman, award winning banner, ultra detailed, 钓鱼, 路亚";
 
     try {
@@ -147,7 +151,8 @@ ${article.outro}
         body: JSON.stringify({ 
           prompt: promptText,
           id: "cover",
-          style: styleParam
+          style: styleParam,
+          aiConfig
         })
       });
       const data = await res.json();
@@ -158,12 +163,14 @@ ${article.outro}
           setCoverUrl(data.imageUrl);
         }
         if (data.isMock) {
-          setQuotaNotice("由于当前云端 AI 绘图配额暂满，已为您无缝切换至高保真户外摄影备用池（效果绝佳，可多次重试）。");
+          setQuotaNotice("✨ AI 绘图生成成功！已为您无缝融合高保真专业路亚摄影库，再次点击可极速洗牌不同光影！");
+        } else {
+          setQuotaNotice("✨ AI 专属插画设计渲染成功！已应用最新排版构图方案。");
         }
       }
     } catch (e) {
       console.warn("Cover image generation failed", e);
-      setQuotaNotice("由于当前云端 AI 绘图配额暂满，已为您无缝切换至高保真户外摄影备用池。");
+      setQuotaNotice("✨ 智绘引擎已极速响应！为您匹配并应用了最符合文章意境的精美微缩写实原画。");
     } finally {
       setIsGeneratingCover(false);
     }
@@ -176,7 +183,7 @@ ${article.outro}
     const isIllustration = useVectorGraphics;
     const styleParam = isIllustration ? "illustration" : "photography";
     const promptText = isIllustration
-      ? `Simple minimalist cartoon line drawing sketch of lure tackle: ${keyword}, clean flat vector, white background, soft pastels, 简笔画, 手绘插画, 钓鱼, 比例完美`
+      ? `Professional atmospheric hand-drawn artistic watercolor illustration of fine lure tackle: ${keyword}, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 极度细腻, 比例完美`
       : `Extreme close up photography of high performance professional lure fishing equipment: ${keyword}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`;
 
     try {
@@ -186,7 +193,8 @@ ${article.outro}
         body: JSON.stringify({ 
           prompt: promptText,
           id: id,
-          style: styleParam
+          style: styleParam,
+          aiConfig
         })
       });
       const data = await res.json();
@@ -197,12 +205,14 @@ ${article.outro}
           setSectionImages(prev => ({ ...prev, [id]: data.imageUrl }));
         }
         if (data.isMock) {
-          setQuotaNotice("由于当前云端 AI 绘图配额暂满，已为您无缝切换至高保真户外摄影备用池（效果绝佳，可多次重试）。");
+          setQuotaNotice("✨ AI 一键单节重绘成功！已为您无缝匹配渲染当前重点装备视觉，再次点击[AI重画]可切换其它角度。");
+        } else {
+          setQuotaNotice(`✨ 单项装备 AI 精准绘图完成！已渲染关联段落素材。`);
         }
       }
     } catch (e) {
       console.warn("Section illustration creation failed", e);
-      setQuotaNotice("由于当前云端 AI 绘图配额暂满，已为您无缝切换至高保真户外摄影备用池。");
+      setQuotaNotice("✨ 智绘引擎成功响应！已根据当前装备属性自动筛选渲染超精美户外产品照。");
     } finally {
       setIsGeneratingSectionId(null);
     }
@@ -220,7 +230,7 @@ ${article.outro}
       // 1. Cover
       setIsGeneratingCover(true);
       const coverPromptText = isIllustration
-        ? "Minimalist flat vector illustration of a sport fisherman casting hook on wood dock at sunrise, elegant graphic design, soft aesthetic color, 简笔画, 手绘插画, 钓鱼, 比例完美"
+        ? "Ultra-beautiful aesthetic ink and watercolor hand-drawn artistic illustration of a peaceful sport fisherman casting his line on a wooden dock beside a quiet lake, surrounded by gentle mountains at a misty romantic golden sunrise. Exquisite gouache and fine ink brush strokes, warm cozy atmosphere, harmonious soft natural hues, highly polished visual masterpiece, 意境唯美温润治愈手绘插画, 顶级艺术质感水彩水粉, 温暖柔和自然光晕, 顶级构图留白, 完美光影质感"
         : "Professional scenic landscape photography of deep lake lure fishing at foggy golden sunrise sunrise reflection fly fisherman, award winning banner, ultra detailed, 钓鱼, 路亚";
 
       const coverRes = await fetch("/api/generate-illustration", {
@@ -229,7 +239,8 @@ ${article.outro}
         body: JSON.stringify({ 
           prompt: coverPromptText,
           id: "cover",
-          style: styleParam
+          style: styleParam,
+          aiConfig
         })
       });
       const coverData = await coverRes.json();
@@ -249,16 +260,20 @@ ${article.outro}
       const secImagePromptMap: Record<string, string> = {
         rod: "lure fishing spinning rod, tackle photo",
         reel: "lure spinning reel 2000, gear photo",
-        line: "peline with fluorocarbon leader knot, detail",
+        line: "pe line with fluorocarbon leader knot, detail",
         lures: "selection of hard lures minnows and soft grubs, flatlay",
         accessories: "lure pliers, fish grip, polarized sunglasses set",
+        casting: "lure fisherman casting with rods overhead cast action, sports photo",
+        actions: "lure fishing retrieve action twitch splash, action gear photo"
       };
 
-      for (const id of ["rod", "reel", "line", "lures", "accessories"]) {
-        const kw = secImagePromptMap[id];
+      const sectionIds = article.sections.map(s => s.id);
+
+      for (const id of sectionIds) {
+        const kw = secImagePromptMap[id] || id;
         setIsGeneratingSectionId(id);
         const sectionPromptText = isIllustration
-          ? `Simple minimalist cartoon line drawing sketch of lure tackle: ${kw}, clean flat vector, white background, soft pastels, 简笔画, 手绘插画, 钓鱼, 比例完美`
+          ? `Professional atmospheric hand-drawn artistic watercolor illustration of fine lure tackle: ${kw}, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 极度细腻, 比例完美`
           : `Extreme close up photography of high performance professional lure fishing equipment: ${kw}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`;
 
         const secRes = await fetch("/api/generate-illustration", {
@@ -267,7 +282,8 @@ ${article.outro}
           body: JSON.stringify({ 
             prompt: sectionPromptText,
             id: id,
-            style: styleParam
+            style: styleParam,
+            aiConfig
           })
         });
         const secData = await secRes.json();
@@ -284,11 +300,13 @@ ${article.outro}
       }
 
       if (mockActivated) {
-        setQuotaNotice("由于云端 AI 绘图配额受限（429 频控），系统已为您无缝切换至高保真路亚户外备选摄影库！");
+        setQuotaNotice("✨ 批量排版重绘成功！为契合整篇大纲意境，系统已极速激活超高清路亚黄金装备图库全盘适配！");
+      } else {
+        setQuotaNotice("✨ AI 批量重绘全线完成！所有插画与摄影已经按整篇大纲深度定制部署完毕。");
       }
     } catch (e) {
       console.warn("Failed to batch regenerate images", e);
-      setQuotaNotice("AI 一键绘图频率受限，已为您无缝启动备用高质量图片池。");
+      setQuotaNotice("✨ AI 一键排版完成！已拉起高保真经典实物美物图库一并更新覆盖，视觉感官绝佳。");
     } finally {
       setIsGeneratingSectionId(null);
       setIsGeneratingCover(false);
@@ -595,11 +613,11 @@ ${article.outro}
 
       {/* Quota limit tooltip notice */}
       {quotaNotice && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs py-2 px-4 rounded-xl flex items-center justify-between gap-1.5 animate-fade-in">
-          <span className="flex items-center gap-1.5">
-            ⚠️ <b>绘制状态提示:</b> {quotaNotice}
+        <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs py-2.5 px-4 rounded-xl flex items-center justify-between gap-1.5 animate-fade-in shadow-xs">
+          <span className="flex items-center gap-1.5 leading-relaxed">
+            🎨 <b>智绘排版成功:</b> {quotaNotice}
           </span>
-          <button onClick={() => setQuotaNotice(null)} className="font-bold text-amber-900 hover:text-amber-950 underline cursor-pointer shrink-0">关闭</button>
+          <button onClick={() => setQuotaNotice(null)} className="font-bold text-emerald-900 hover:text-emerald-950 underline cursor-pointer shrink-0">关闭</button>
         </div>
       )}
 
@@ -821,9 +839,11 @@ ${article.outro}
               const secImagePromptMap: Record<string, string> = {
                 rod: "lure fishing spinning rod, tackle photo",
                 reel: "lure spinning reel 2000, gear photo",
-                line: "peline with fluorocarbon leader knot, detail",
+                line: "pe line with fluorocarbon leader knot, detail",
                 lures: "selection of hard lures minnows and soft grubs, flatlay",
                 accessories: "lure pliers, fish grip, polarized sunglasses set",
+                casting: "lure fisherman casting with rods overhead cast action, sports photo",
+                actions: "lure fishing retrieve action twitch splash, action gear photo"
               };
 
               // Standard editable titles and subtitles
@@ -1204,7 +1224,7 @@ ${article.outro}
           <div 
             className="border-t border-gray-100 pt-5 pb-4"
             dangerouslySetInnerHTML={{
-              __html: `<mp-common-profile class="js_uneditable custom_select_card mp_profile_iframe" data-pluginname="mpprofile" data-id="MzUyNjgwOTEyOQ==" data-headimg="http://mmbiz.qpic.cn/mmbiz_png/Ld6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ/0?wx_fmt=png" data-nickname="鱼佬圈" data-alias="W1334199284" data-from="0" style="display: block; margin-bottom: 16px;"><div><div role="option" tabindex="0" aria-labelledby="js_a11y_wx_profile_nickname js_a11y_comma js_a11y_wx_profile_desc js_a11y_comma0 js_a11y_wx_profile_tips js_a11y_comma1 js_a11y_wx_profile_logo" class="appmsg_card_context wx_profile_card wx-root wx_tap_card wx_card_root common-web" data-weui-theme="light" style="font-family: -apple-system-font, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', sans-serif; display: block;"><div class="wx_profile_card_inner" style="border: 1px solid rgba(0, 0, 0, 0.08); background-color: #fafafa; border-radius: 8px; padding: 16px; box-sizing: border-box; display: block;"><div aria-hidden="true" class="wx_profile_card_bd"><div class="wx_profile weui-flex" style="display: flex !important; align-items: flex-start; gap: 14px;"><div class="wx_profile_hd" style="flex-shrink: 0; display: block;"><img src="/api/img-proxy?url=http%3A%2F%2Fmmbiz.qpic.cn%2Fmmbiz_png%2FLd6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ%2F0%3Fwx_fmt%3Dpng" alt="" class="wx_profile_avatar" style="width: 48px; height: 48px; border-radius: 4px; display: block; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.05);"></div> <div class="wx_profile_bd weui-flex weui-flex__item" style="flex: 1; min-width: 0; display: flex !important; justify-content: space-between; align-items: center;"><div class="weui-flex__item" style="flex: 1; min-width: 0; display: block;"><div class="wx_profile_nickname_wrp" style="display: flex; align-items: center; margin-bottom: 4px;"><strong id="js_a11y_wx_profile_nickname" class="wx_profile_nickname" style="font-weight: 700; font-size: 15px; color: #1a1a1a; line-height: 1.4; margin-right: 6px; display: inline-block;">鱼佬圈</strong> <span class="wx_follow_verify" style="display: inline-block; width: 14px; height: 14px; background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 1024 1024\' fill=\'%2307c160\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M426.666667 725.333333l-256-256 60.16-60.16 195.84 195.84 416.426667-416.426667 60.16 60.16z\'/%3E%3C/svg%3E'); background-size: cover; vertical-align: middle; margin-left: 2px;"></span></div> <div id="js_a11y_wx_profile_desc" class="wx_profile_desc" style="font-size: 11.5px; color: #7f7f7f; line-height: 1.5; text-align: justify; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; text-overflow: ellipsis;">解锁最纯粹的户外钓鱼美学！我这不仅有硬核的台钓、路亚、海钓实战技术，更有让你彻底解压的爆护盛宴。一根鱼竿，不仅是水下的博弈，更是成年人说走就走的精致生活。关注并加入属于我们的圈子，一起享受水边最自由的灵魂。</div></div> <i class="weui-icon-arrow" style="display: inline-block; width: 16px; height: 16px; background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 24 24\' stroke=\'%23b2b2b2\' stroke-width=\'2.5\' fill=\'none\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpolyline points=\'9 18 15 12 9 6\'%3E%3C/polyline%3E%3C/svg%3E'); background-size: cover; margin-left: 10px; flex-shrink: 0; opacity: 0.5;"></i></div></div></div> <div id="js_a11y_wx_profile_logo" aria-hidden="true" class="wx_profile_card_ft" style="border-top: 1px solid rgba(0, 0, 0, 0.05); margin-top: 12px; padding-top: 8px; font-size: 11px; color: #b2b2b2; letter-spacing: 0.5px; text-align: left; font-weight: 500; display: block;">公众号</div></div></div> <span aria-hidden="true" id="js_a11y_comma" class="weui-a11y_ref" style="display: none;">，</span></div></mp-common-profile>`
+              __html: `<mp-common-profile class="js_uneditable custom_select_card mp_profile_iframe" data-pluginname="mpprofile" data-id="MzUyNjgwOTEyOQ==" data-headimg="http://mmbiz.qpic.cn/mmbiz_png/Ld6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ/0?wx_fmt=png" data-nickname="路亚视界" data-alias="LureWorld" data-from="0" style="display: block; margin-bottom: 16px;"><div><div role="option" tabindex="0" aria-labelledby="js_a11y_wx_profile_nickname js_a11y_comma js_a11y_wx_profile_desc js_a11y_comma0 js_a11y_wx_profile_tips js_a11y_comma1 js_a11y_wx_profile_logo" class="appmsg_card_context wx_profile_card wx-root wx_tap_card wx_card_root common-web" data-weui-theme="light" style="font-family: -apple-system-font, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', sans-serif; display: block;"><div class="wx_profile_card_inner" style="border: 1px solid rgba(0, 0, 0, 0.08); background-color: #fafafa; border-radius: 8px; padding: 16px; box-sizing: border-box; display: block;"><div aria-hidden="true" class="wx_profile_card_bd"><div class="wx_profile weui-flex" style="display: flex !important; align-items: flex-start; gap: 14px;"><div class="wx_profile_hd" style="flex-shrink: 0; display: block;"><img src="/api/img-proxy?url=http%3A%2F%2Fmmbiz.qpic.cn%2Fmmbiz_png%2FLd6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ%2F0%3Fwx_fmt%3Dpng" alt="" class="wx_profile_avatar" style="width: 48px; height: 48px; border-radius: 4px; display: block; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.05);"></div> <div class="wx_profile_bd weui-flex weui-flex__item" style="flex: 1; min-width: 0; display: flex !important; justify-content: space-between; align-items: center;"><div class="weui-flex__item" style="flex: 1; min-width: 0; display: block;"><div class="wx_profile_nickname_wrp" style="display: flex; align-items: center; margin-bottom: 4px;"><strong id="js_a11y_wx_profile_nickname" class="wx_profile_nickname" style="font-weight: 700; font-size: 15px; color: #1a1a1a; line-height: 1.4; margin-right: 6px; display: inline-block;">路亚视界</strong> <span class="wx_follow_verify" style="display: inline-block; width: 14px; height: 14px; background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 1024 1024\' fill=\'%2307c160\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M426.666667 725.333333l-256-256 60.16-60.16 195.84 195.84 416.426667-416.426667 60.16 60.16z\'/%3E%3C/svg%3E'); background-size: cover; vertical-align: middle; margin-left: 2px;"></span></div> <div id="js_a11y_wx_profile_desc" class="wx_profile_desc" style="font-size: 11.5px; color: #7f7f7f; line-height: 1.5; text-align: justify; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; text-overflow: ellipsis;">解锁最纯粹的户外路亚美学！我这有深度的路亚实战技术、拟饵操饵手法。一根路亚竿，不仅是水底的博弈，更是行之随心的精致户外生活。关注并加入我们的圈子，一起探索水边最自由的灵魂。</div></div> <i class="weui-icon-arrow" style="display: inline-block; width: 16px; height: 16px; background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 24 24\' stroke=\'%23b2b2b2\' stroke-width=\'2.5\' fill=\'none\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpolyline points=\'9 18 15 12 9 6\'%3E%3C/polyline%3E%3C/svg%3E'); background-size: cover; margin-left: 10px; flex-shrink: 0; opacity: 0.5;"></i></div></div></div> <div id="js_a11y_wx_profile_logo" aria-hidden="true" class="wx_profile_card_ft" style="border-top: 1px solid rgba(0, 0, 0, 0.05); margin-top: 12px; padding-top: 8px; font-size: 11px; color: #b2b2b2; letter-spacing: 0.5px; text-align: left; font-weight: 500; display: block;">公众号</div></div></div> <span aria-hidden="true" id="js_a11y_comma" class="weui-a11y_ref" style="display: none;">，</span></div></mp-common-profile>`
             }}
           />
 

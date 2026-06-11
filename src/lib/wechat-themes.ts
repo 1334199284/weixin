@@ -376,7 +376,7 @@ export function generateWeChatInlineHtml(
 
       <!-- Outro & Call to Action: WeChat Official Profile Card -->
       <section style="margin-top: 36px; padding-top: 24px; border-top: 1px solid #f0f0f0;">
-        <section class="mp_profile_iframe_wrp custom_select_card_wrp" nodeleaf=""><mp-common-profile class="mpprofile js_uneditable custom_select_card mp_profile_iframe mp_common_widget" data-pluginname="mpprofile" data-nickname="鱼佬圈" data-alias="W1334199284" data-from="0" data-headimg="http://mmbiz.qpic.cn/mmbiz_png/Ld6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ/0?wx_fmt=png" data-signature="解锁最纯粹的户外钓鱼美学！我这不仅有硬核的台钓、路亚、海钓实战技术，更有让你彻底解压的爆护盛宴。一根鱼竿，不仅是水下的博弈，更是成年人说走就走的精致生活。关注并加入属于我们的圈子，一起享受水边最自由的灵魂。" data-id="MzUyNjgwOTEyOQ==" data-is_biz_ban="0" data-service_type="1" data-verify_status="0" contenteditable="false"></mp-common-profile><img class="ProseMirror-separator" alt=""><br class="ProseMirror-trailingBreak"></section>
+        <section class="mp_profile_iframe_wrp custom_select_card_wrp" nodeleaf=""><mp-common-profile class="mpprofile js_uneditable custom_select_card mp_profile_iframe mp_common_widget" data-pluginname="mpprofile" data-nickname="路亚视界" data-alias="LureWorld" data-from="0" data-headimg="http://mmbiz.qpic.cn/mmbiz_png/Ld6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ/0?wx_fmt=png" data-signature="解锁最纯粹的户外路亚美学！我这有深度的路亚实战技术、拟饵操饵手法。一根路亚竿，不仅是水底的博弈，更是行之随心的精致户外生活。关注并加入我们的圈子，一起探索水边最自由的灵魂。" data-id="MzUyNjgwOTEyOQ==" data-is_biz_ban="0" data-service_type="1" data-verify_status="0" contenteditable="false"></mp-common-profile><img class="ProseMirror-separator" alt=""><br class="ProseMirror-trailingBreak"></section>
       </section>
     </section>
   `;

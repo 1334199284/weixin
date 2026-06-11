@@ -16,8 +16,8 @@ app.use(express.json());
 const generatedImages = new Map<string, { mimeType: string; data: string }>();
 
 // Initialize Gemini Client dynamically with User-Agent set for telemetry as required
-function getAiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+function getAiClient(customApiKey?: string) {
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return null;
   }
@@ -31,14 +31,37 @@ function getAiClient() {
   });
 }
 
+// Robust JSON cleanser helper to extract and clean potential conversational text / markdown wrapping backticks from custom models (like Qwen, DeepSeek, etc.)
+function cleanJsonResponse(rawText: string): string {
+  let text = rawText.trim();
+  // Remove markdown block wrapper if present
+  if (text.startsWith("```")) {
+    const lines = text.split("\n");
+    if (lines[0].startsWith("```")) {
+      lines.shift();
+    }
+    if (lines[lines.length - 1].startsWith("```")) {
+      lines.pop();
+    }
+    text = lines.join("\n").trim();
+  }
+  // Try to find the first '{' and last '}'
+  const startIdx = text.indexOf("{");
+  const endIdx = text.lastIndexOf("}");
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    text = text.substring(startIdx, endIdx + 1);
+  }
+  return text;
+}
+
 // ----------------------------------------------------
 // API: Generate Lure Fishing WeChat Article
 // ----------------------------------------------------
 app.post("/api/generate-article", async (req, res) => {
   try {
-    const { outline, theme, level, tone, customPrompt } = req.body;
+    const { outline, theme, level, tone, customPrompt, aiConfig } = req.body;
 
-    const basePrompt = outline || `第二课：装备入门——选对工具事半功倍
+    const basePrompt = outline || `装备入门——选对工具事半功倍
 基础装备：路亚竿（推荐直柄竿，ML或M调泛用性强）、渔轮（新手首选纺车轮，不易炸线）、钓线（PE线搭配碳素前导线，兼顾强度与隐蔽性）。
 核心消耗品：拟饵的种类与选择（硬饵如米诺、亮片，软饵如卷尾蛆等）。
 必备配件：路亚钳、控鱼器、偏光镜等。`;
@@ -55,6 +78,8 @@ Additional Instructions:
 - Article Tone: ${tone || 'Friendly & Professional'}
 - Theme Preference: ${theme || 'Natural Green'}
 - Custom Request: ${customPrompt || 'None'}
+- CRITICAL Branding Restriction: Do NOT use the brand/channel names "鱼佬圈" or "LEG" anywhere in the title, subtitle, introduction, text, or outro. Instead, use natural, welcoming generic names like "小路", "路亚老友", "老钓手", "路亚玩家", or write in first-person without specific branding.
+- CRITICAL Tone Constraint: Do NOT refer to this article as a "课" (lesson/class/course), "第x课", "课程", or anything similar. We want to be incredibly approachable, build genuine trust and rapport with the reader, and sound like a close fishing buddy sharing real-world tribal knowledge. Instead of "课", refer to it as an "入门指南", "实战秘籍", "干货分享", "经验精选" etc.
 - CRITICAL Lure Requirement: Under the lure section (where minnows, spinnerbaits/spoons, and soft curly tail grubs are discussed), you MUST expand in rich, structured detail. For each of these three specific lure types, you must describe:
   1. Its realistic underwater action (泳姿及动作)
   2. Ideal fishing conditions (water depth, clarity/visibility, and temperature)
@@ -66,7 +91,72 @@ Format your output strictly as a JSON object with the specified schema below.
 Ensure the text is lively, incorporates practical fishing insights, and provides helpful guidelines to keep beginners motivated. Avoid dry academic translations. Use standard fishing jargon in Chinese (e.g. 炸线, 炒米粉, 炒轮, 前导线, ML调, 纺车轮, 水滴轮).
 `;
 
-    const aiClient = getAiClient();
+    // 1. Check if user configured a custom third-party OpenAI-compatible model (e.g., Qwen, DeepSeek, etc.)
+    if (aiConfig && aiConfig.provider === "custom") {
+      const customApiUrl = `${aiConfig.baseUrl}/chat/completions`;
+      console.log(`[Custom Model Engine] Generating article using model: ${aiConfig.textModel || 'qwen-plus'} on ${customApiUrl}`);
+      
+      const userPrompt = `${instructions}
+      
+CRITICAL: You MUST respond ONLY with a raw JSON object matching the requested schema. Do not output any markdown codeblock backticks (\`\`\`json) or additional conversational prefaces/intro/outro. Standard response schema:
+{
+  "title": "catchy WeChat article title",
+  "subtitle": "WeChat subtitle",
+  "intro": "engaging WeChat introduction hook",
+  "sections": [
+    {
+      "id": "rod",
+      "title": "01 Title",
+      "subtitle": "Subtitle",
+      "paragraphs": ["Para 1", "Para 2"],
+      "proTips": "Pro tips",
+      "imagePrompt": "English keywords"
+    }
+  ],
+  "safetyTips": "Ethics and safety tips",
+  "outro": "Outro text here"
+}`;
+
+      const response = await fetch(customApiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${aiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: aiConfig.textModel || "qwen-plus",
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert Chinese WeChat Official Account content creator specializing in outdoor sports and lure fishing. You MUST respond ONLY with a raw valid JSON object complying with the user prompt."
+            },
+            {
+              role: "user",
+              content: userPrompt
+            }
+          ],
+          temperature: 0.7,
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Custom LLM API Error: ${response.status} - ${errText}`);
+      }
+
+      const resJson = await response.json();
+      const rawText = resJson.choices?.[0]?.message?.content;
+      if (!rawText) {
+        throw new Error("No text content returned from Custom LLM API");
+      }
+
+      const cleaned = cleanJsonResponse(rawText);
+      const parsedData = JSON.parse(cleaned);
+      return res.json(parsedData);
+    }
+
+    // 2. Default to standard client (optionally passing user's own custom Gemini Key to bypass global quotas)
+    const aiClient = getAiClient(aiConfig?.apiKey || undefined);
     if (!aiClient) {
       // Return beautiful fallback mock data dynamically synthesized from user inputs
       console.warn("GEMINI_API_KEY is not defined. Returning dynamically parsed mockup content.");
@@ -173,7 +263,7 @@ Ensure the text is lively, incorporates practical fishing insights, and provides
     
     // Safely parse or default parameters from req.body (since variables in the try block are block-scoped)
     const { outline, theme, level, tone, customPrompt } = req.body || {};
-    const basePrompt = outline || `第二课：装备入门——选对工具事半功倍
+    const basePrompt = outline || `装备入门——选对工具事半功倍
 基础装备：路亚竿（推荐直柄竿，ML或M调泛用性强）、渔轮（新手首选纺车轮，不易炸线）、钓线（PE线搭配碳素前导线，兼顾强度与隐蔽性）。
 核心消耗品：拟饵的种类与选择（硬饵如米诺、亮片，软饵如卷尾蛆等）。
 必备配件：路亚钳、控鱼器、偏光镜等。`;
@@ -192,24 +282,130 @@ Ensure the text is lively, incorporates practical fishing insights, and provides
   }
 });
 
+// Curated high-fidelity professional fishing-focused Unsplash stock photo pools matching our course keywords perfectly.
+// Because default API keys have strict rate-limits, this ensures users get 100% relevant, pristine visuals instantly on fallback.
+const curatedPhotos: Record<string, string[]> = {
+  cover: [
+    "https://images.unsplash.com/photo-1434064511983-18c6dae20ed5?auto=format&fit=crop&q=80&w=800",
+    "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&q=80&w=800",
+    "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&q=80&w=800",
+    "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&q=80&w=800"
+  ],
+  rod: [
+    "https://images.unsplash.com/photo-1615887023516-9b6bcd559e87?auto=format&fit=crop&q=80&w=600",
+    "https://images.unsplash.com/photo-1564858908855-08ddcce08fe7?auto=format&fit=crop&q=80&w=600"
+  ],
+  reel: [
+    "https://images.unsplash.com/photo-1605647540924-852290f6b0d5?auto=format&fit=crop&q=80&w=600",
+    "https://images.unsplash.com/photo-1622325983777-628f80456209?auto=format&fit=crop&q=80&w=600"
+  ],
+  line: [
+    "https://images.unsplash.com/photo-1514907283155-ea5f4094c70c?auto=format&fit=crop&q=80&w=600",
+    "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&q=80&w=600"
+  ],
+  lures: [
+    "https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&q=80&w=600",
+    "https://images.unsplash.com/photo-1548543604-a87c9909abec?auto=format&fit=crop&q=80&w=600",
+    "https://images.unsplash.com/photo-1611095790444-1dfa4825e5a2?auto=format&fit=crop&q=80&w=600"
+  ],
+  accessories: [
+    "https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&q=80&w=600",
+    "https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&q=80&w=600"
+  ],
+  casting: [
+    "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&q=80&w=600",
+    "https://images.unsplash.com/photo-1434064511983-18c6dae20ed5?auto=format&fit=crop&q=80&w=600"
+  ],
+  actions: [
+    "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&q=80&w=600",
+    "https://images.unsplash.com/photo-1551244072-5d12893278ab?auto=format&fit=crop&q=80&w=600"
+  ]
+};
+
 // ----------------------------------------------------
 // API: Generate Illustration via gemini-2.5-flash-image
 // ----------------------------------------------------
 app.post("/api/generate-illustration", async (req, res) => {
-  const { prompt, id, style } = req.body;
+  const { prompt, id, style, aiConfig } = req.body;
   const isIllustration = style === "illustration";
   
   // High-fidelity fallback URL generator using Unsplash Featured redirect for dynamic and fresh visual options on every click
   const getDynamicFallbackUrl = () => {
     const randomSig = Math.floor(Math.random() * 100000);
+    const idKey = id || "lure";
+    
+    // Check if we have pre-curated high-fidelity photos for this exact physical ID
+    if (!isIllustration && curatedPhotos[idKey]) {
+      const arr = curatedPhotos[idKey];
+      const selectedUrl = arr[Math.floor(Math.random() * arr.length)];
+      return `${selectedUrl}${selectedUrl.includes("?") ? "&" : "?"}sig=${randomSig}`;
+    }
+
     if (isIllustration) {
-      return `https://images.unsplash.com/featured/800x600/?unfocused,minimalist,illustration,vector,${encodeURIComponent(id || "lure")}&sig=${randomSig}`;
+      return `https://images.unsplash.com/featured/800x600/?atmospheric,artistic,illustration,watercolor,${encodeURIComponent(id || "lure")}&sig=${randomSig}`;
     }
     return `https://images.unsplash.com/featured/800x600/?lure,fishing,closeup,${encodeURIComponent(id || "gear")}&sig=${randomSig}`;
   };
 
   try {
-    const aiClient = getAiClient();
+    // 1. Handle custom third-party OpenAI-compatible Text-To-Image APIs (SiliconFlow, local setups, etc.)
+    if (aiConfig && aiConfig.provider === "custom") {
+      const customApiUrl = `${aiConfig.baseUrl}/images/generations`;
+      console.log(`[Custom Image Engine] Generating image using model: ${aiConfig.imageModel || "black-forest-labs/FLUX.1-schnell"} on ${customApiUrl}`);
+      
+      const styledTextPrompt = isIllustration
+        ? `${prompt}, professional atmospheric hand-drawn artistic illustration, exquisite watercolor and gouache texture, soft gentle natural light, elegant paper grain brushstrokes, high artistic visual mood, harmonious soft color palette, aesthetic nature integration, depth of field, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 柔和自然光影, 比例构图完美, 留白美学`
+        : `${prompt}, ultra-sharp professional product photography catalog view, high performance premium fishing tackle, clear detailed studio lighting, elegant blurred shallow depth backdrop, photorealistic style, 真实路亚现场, 钓鱼, 比例完美`;
+
+      const response = await fetch(customApiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${aiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: aiConfig.imageModel || "black-forest-labs/FLUX.1-schnell",
+          prompt: styledTextPrompt,
+          size: "1024x768"
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Custom Image Gen API Error: ${response.status} - ${errText}`);
+      }
+
+      const resJson = await response.json();
+      const returnedImgUrl = resJson.data?.[0]?.url || resJson.data?.[0]?.b64_json;
+      if (!returnedImgUrl) {
+        throw new Error("No image URL or b64 data returned from Custom Image Gen API");
+      }
+
+      if (returnedImgUrl.startsWith("data:") || !returnedImgUrl.startsWith("http")) {
+        let base64Part = returnedImgUrl;
+        if (returnedImgUrl.includes("base64,")) {
+          base64Part = returnedImgUrl.split("base64,")[1];
+        }
+        const imageId = `${id || "custom_img"}_${Math.random().toString(36).substring(2, 10)}`;
+        generatedImages.set(imageId, { mimeType: "image/png", data: base64Part });
+        return res.json({ imageUrl: `/api/img/${imageId}`, isMock: false });
+      } else {
+        // Fetch external image stream and proxy locally to avoid iframe Referrer/CORS restrictions
+        const fetchedImg = await fetch(returnedImgUrl);
+        if (fetchedImg.ok) {
+          const buffer = await fetchedImg.arrayBuffer();
+          const base64Part = Buffer.from(buffer).toString("base64");
+          const imageId = `${id || "custom_img"}_${Math.random().toString(36).substring(2, 10)}`;
+          generatedImages.set(imageId, { mimeType: "image/png", data: base64Part });
+          return res.json({ imageUrl: `/api/img/${imageId}`, isMock: false });
+        } else {
+          return res.json({ imageUrl: returnedImgUrl, isMock: false });
+        }
+      }
+    }
+
+    // 2. Default to Google Gemini (optionally passing user's own custom key to bypass 429 quota limits)
+    const aiClient = getAiClient(aiConfig?.apiKey || undefined);
     if (!aiClient) {
       console.warn("GEMINI_API_KEY is not defined. Returning dynamically searched Unsplash Featured layout.");
       return res.json({ imageUrl: getDynamicFallbackUrl(), isMock: true });
@@ -219,7 +415,7 @@ app.post("/api/generate-illustration", async (req, res) => {
     
     // Standardize stylistic wrap depending on graphic choice
     const styledTextPrompt = isIllustration
-      ? `${prompt}, professional minimalist line drawing illustration style, flat elegant vector, soft color palette, clean vector canvas background, simple cartoon sketch, 简笔画, 手绘插画, 扁平化风格, 钓鱼, 比例完美`
+      ? `${prompt}, professional atmospheric hand-drawn artistic illustration, exquisite watercolor and gouache texture, soft gentle natural light, elegant paper grain brushstrokes, high artistic visual mood, harmonious soft color palette, aesthetic nature integration, depth of field, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 柔和自然光影, 比例构图完美, 留白美学`
       : `${prompt}, ultra-sharp professional product photography catalog view, high performance premium fishing tackle, clear detailed studio lighting, elegant blurred shallow depth backdrop, photorealistic style, 真实路亚现场, 钓鱼, 比例完美`;
 
     const response = await aiClient.models.generateContent({
@@ -260,11 +456,19 @@ app.post("/api/generate-illustration", async (req, res) => {
       throw new Error("No image data returned from Gemini");
     }
   } catch (error: any) {
-    console.warn("Gemini image generation failed. Triggering rich dynamic redirect failover:", error.message || error);
+    const errorMsg = error?.message || String(error);
+    const isQuotaError = errorMsg.includes("quota") || errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED");
+    
+    if (isQuotaError) {
+      console.log(`[Image Fallback] Quota limit hit or rate-limited for model 'gemini-2.5-flash-image'. Silently falling back to high-fidelity Unsplash redirects.`);
+    } else {
+      console.log(`[Image Fallback] Falling back to high-fidelity Unsplash stock photo redirects due to: ${errorMsg}`);
+    }
+    
     return res.json({ 
       imageUrl: getDynamicFallbackUrl(), 
       isMock: true,
-      error: error.message 
+      error: isQuotaError ? "API rate limited or over-quota. Switched to high-fidelity stock photo fallback." : errorMsg
     });
   }
 });
@@ -321,7 +525,7 @@ function getFallbackArticle(
   // Default initial strings if outline is dry
   let title = "【避坑指南】选对装备事半功倍！新手首套路亚黄金组合挑选手册";
   let subtitle = `拒绝交学费！资深钓友手把手教你配齐路亚第一套黄金装备 (${level === "Beginner" ? "新手入门" : level === "Intermediate" ? "中级进阶" : "骨灰玩家"} · ${tone === "Friendly" ? "亲切幽默" : tone === "Professional" ? "严谨专业" : tone === "Enthusiastic" ? "饱满激情" : "轻松风趣"})`;
-  let intro = `嘿！各位钓友，我是你们在“鱼佬圈”的老伙计。相信很多刚入坑的朋友对装备选择非常纠结。根据大家最新的反馈，今天我们特别针对全新的定制化大纲进行独家拆解，为你深度定制一套属于你的超级爆护黄金装备！`;
+  let intro = `嘿！各位钓友，我是你们的路亚老钓友。相信很多刚入坑的朋友对装备选择非常纠结。根据大家最新的反馈，今天我们特别针对全新的定制化大纲进行独家拆解，为你深度定制一套属于你的超级爆护黄金装备！`;
 
   // Try to find a good title from outline
   if (lines.length > 0 && lines[0].length > 5 && !lines[0].includes("：") && !lines[0].includes(":")) {
@@ -403,7 +607,7 @@ function getFallbackArticle(
     subtitle,
     intro,
     sections: sections.slice(0, 5), // limit of max 5 sections matching UI illustrations
-    safetyTips: `【绿色路亚精神】适度留鱼，鱼佬圈极力提倡放流（Catch & Release）小鱼与怀卵母鱼。随手带走垃圾，不丢废弃线材，一同保护好水土。${customPrompt ? "补充建议：" + customPrompt : "抛投作钓时注意周围环境健康安全为先！"}`,
+    safetyTips: `【绿色路亚精神】适度留鱼，我们极力提倡放流（Catch & Release）小鱼与怀卵母鱼。随手带走垃圾，不丢废弃线材，一同保护好水土。${customPrompt ? "补充建议：" + customPrompt : "抛投作钓时注意周围环境健康安全为先！"}`,
     outro: `路亚不仅是一手技术，更是我们与自然的一场博弈。好啦，以上就是针对本次全新大纲我们为您制作的专属微信公众号排版。在【${theme === "green" ? "自然绿" : theme === "blue" ? "深邃蓝" : "炽热橙"}】模板衬托下已经完美就绪。心动不如行动，快配齐装备，去水边解锁属于你的好心情吧！`
   };
 }

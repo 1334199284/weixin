@@ -84,7 +84,7 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
           <rect x="240" y="25" width="320" height="34" rx="17" fill="white" fill-opacity="0.9" />
           <circle cx="260" cy="42" r="6" fill="${color}" />
           <text x="278" y="47" fill="#1e293b" font-size="13" font-weight="bold" font-family="sans-serif" letter-spacing="1">
-            鱼佬圈 LEG · 第二课黄金装备指南
+            极客路亚 · 新手装备与实战指南
           </text>
         </svg>`;
 
@@ -395,6 +395,114 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
           <text x="220" y="303" fill="#64748b" font-size="10" font-family="sans-serif" font-style="italic">
             —— 三大安全配件缺一不可：安全、体面、爆护保障 ——
           </text>
+        </svg>`;
+
+    case "casting":
+      return `<svg viewBox="0 0 600 338" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px;">
+          <rect width="600" height="338" fill="${secondary}" rx="8" />
+          <path d="M0 50 H600 M0 100 H600 M0 150 H600 M0 200 H600 M0 250 H600 M0 300 H600" stroke="#000000" stroke-opacity="0.03" stroke-width="1" />
+          <path d="M100 0 V338 M200 0 V338 M300 0 V338 M400 0 V338 M500 0 V338" stroke="#000000" stroke-opacity="0.03" stroke-width="1" />
+
+          <!-- Sun light -->
+          <circle cx="500" cy="180" r="40" fill="#fed7aa" opacity="0.3" />
+
+          <!-- Mountains far away -->
+          <path d="M400 240 L480 180 L560 240 Z" fill="#94a3b8" opacity="0.2" />
+          <path d="M460 240 L540 160 L620 240 Z" fill="#475569" opacity="0.15" />
+
+          <!-- Land/Water dividing line -->
+          <line x1="0" y1="240" x2="600" y2="240" stroke="#cbd5e1" stroke-width="2" />
+          <!-- Water ripples -->
+          <path d="M50 260 Q150 255 250 260 T450 260" stroke="${color}" stroke-opacity="0.25" stroke-width="1" fill="none" />
+          <path d="M120 290 Q270 285 410 290 T580 290" stroke="${color}" stroke-opacity="0.15" stroke-width="1" fill="none" />
+
+          <!-- Silhouette of casting fisherman -->
+          <g transform="translate(100, 160)">
+            <ellipse cx="28" cy="10" rx="9" ry="1.5" fill="#334155" opacity="0.4" />
+            <!-- Feet and legs -->
+            <path d="M12 80 C12 60 16 50 18 45 L20 80 Z" fill="#1e293b" />
+            <path d="M28 80 C28 60 30 50 32 45 L34 80 Z" fill="#1e293b" />
+            <!-- Body -->
+            <path d="M10 45 C10 25 18 15 28 15 C38 15 42 25 38 45 Z" fill="#1e293b" />
+            <!-- Head with hat -->
+            <circle cx="28" cy="5" r="7" fill="#1e293b" />
+            <ellipse cx="28" cy="4" rx="12" ry="2" fill="#0f172a" />
+            <!-- Fishing rod held in hand, showing dynamic bend of overhead casting back-angle -->
+            <path d="M 32 30 L 100 -20 Q 150 -40, 210 -10" stroke="#0f172a" stroke-width="4.5" fill="none" stroke-linecap="round" />
+            <path d="M 100 -20 Q 150 -40, 115 -10" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="3 3" fill="none" />
+            
+            <!-- Casting trajectory line (Dotted curve) -->
+            <path d="M 210 -10 Q 300 -90, 480 80" stroke="${color}" stroke-width="2" stroke-dasharray="5 4" fill="none" />
+            
+            <!-- Splash of lure hitting water -->
+            <g transform="translate(480, 80) scale(0.6)">
+              <circle cx="0" cy="0" r="1.5" fill="${color}" />
+              <path d="M-10 -5 Q0 -20 10 -5" stroke="${color}" stroke-width="1.5" fill="none" />
+              <path d="M-20 0 L20 0" stroke="${color}" stroke-width="1.5" />
+            </g>
+          </g>
+
+          <g transform="translate(40, 40)">
+            <rect width="210" height="90" rx="10" fill="white" fill-opacity="0.95" />
+            <text x="15" y="26" fill="${color}" font-size="14" font-weight="bold" font-family="sans-serif">【过头抛与侧抛】</text>
+            <text x="15" y="48" fill="#475569" font-size="11" font-family="sans-serif">• 蓄力：竿梢向后挥动一瞬间满弓</text>
+            <text x="15" y="65" fill="#475569" font-size="11" font-family="sans-serif">• 释放：在10点钟位置松指抛出</text>
+            <text x="15" y="80" fill="#475569" font-size="11" font-family="sans-serif">• 侧抛：适合重障碍下的平射落点</text>
+          </g>
+        </svg>`;
+
+    case "actions":
+      return `<svg viewBox="0 0 600 338" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px;">
+          <rect width="600" height="338" fill="${secondary}" rx="8" />
+          <path d="M0 50 H600 M0 100 H600 M0 150 H600 M0 200 H600 M0 250 H600 M0 300 H600" stroke="#000000" stroke-opacity="0.03" stroke-width="1" />
+          <path d="M100 0 V338 M200 0 V338 M300 0 V338 M400 0 V338 M500 0 V338" stroke="#000000" stroke-opacity="0.03" stroke-width="1" />
+
+          <!-- Water Surface line (Split view, underwater display) -->
+          <line x1="0" y1="120" x2="600" y2="120" stroke="#94a3b8" stroke-width="2.5" />
+          <path d="M0 120 C150 115, 300 125, 450 120 T600 120" stroke="${color}" stroke-opacity="0.6" stroke-width="1.5" fill="none" />
+
+          <!-- Deep water shading -->
+          <rect y="121" width="600" height="217" fill="${color}" fill-opacity="0.06" />
+
+          <!-- Underwater structures / weeds -->
+          <path d="M40 338 Q60 250 30 180 T70 121" stroke="#16a34a" stroke-width="3" stroke-opacity="0.3" fill="none" />
+          <path d="M500 338 Q540 270 510 200 T530 121" stroke="#16a34a" stroke-width="2.5" stroke-opacity="0.25" fill="none" />
+
+          <!-- Wave motion action line showing "Twitch / Pause" -->
+          <path d="M100 150 Q160 220 220 160 T340 230 T460 180" stroke="#f59e0b" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round" fill="none" />
+          
+          <!-- Text annotations directly on the curve path points -->
+          <rect x="135" y="195" width="40" height="15" rx="3" fill="#ef4444" />
+          <text x="141" y="206" fill="#ffffff" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle" transform="translate(18, 0)">抽</text>
+
+          <rect x="235" y="145" width="40" height="15" rx="3" fill="#3b82f6" />
+          <text x="241" y="155" fill="#ffffff" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle" transform="translate(18, 0)">停</text>
+          
+          <rect x="335" y="225" width="45" height="15" rx="3" fill="#16a34a" />
+          <text x="340" y="235" fill="#ffffff" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle" transform="translate(20, 0)">慢拖</text>
+
+          <!-- Small fish swimming looking at bait -->
+          <g transform="translate(480, 240) scale(0.65)">
+            <path d="M-40 40 C-15 10 10 8 30 15 C50 20 70 25 82 23 C70 12 40 8 20 -12 C-15 -10 -30 25 -40 40 Z" fill="#334155" />
+            <path d="M-40 40 L-65 30 L-55 50 L-40 46 Z" fill="#1e293b" />
+            <circle cx="25" cy="10" r="3" fill="#ffffff" />
+            <circle cx="25" cy="10" r="1.5" fill="#000000" />
+          </g>
+
+          <!-- Little dynamic Minnow lure moving on the action path -->
+          <g transform="translate(300, 205) rotate(25) scale(0.6)">
+            <rect x="-30" y="-8" width="60" height="16" rx="6" fill="#e11d48" />
+            <path d="M30 0 L45 -12 L45 12 Z" fill="#f43f5e" />
+            <circle cx="-15" cy="-2" r="3" fill="#000000" />
+            <circle cx="-16" cy="-3" r="1.5" fill="#ffffff" />
+          </g>
+
+          <g transform="translate(40, 30)">
+            <rect width="215" height="74" rx="10" fill="white" fill-opacity="0.95" />
+            <text x="15" y="24" fill="${color}" font-size="14" font-weight="bold" font-family="sans-serif">【控饵技巧：水中骗术】</text>
+            <text x="15" y="44" fill="#475569" font-size="11" font-family="sans-serif">• 抽停结合：模仿负伤鱼儿引逗翘嘴</text>
+            <text x="15" y="60" fill="#475569" font-size="11" font-family="sans-serif">• 跳底慢拖：使尾巴晃动触底挑逗底栖</text>
+          </g>
         </svg>`;
 
     default:

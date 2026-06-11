@@ -37,3 +37,12 @@ export interface GenerationSettings {
   tone: 'Professional' | 'Enthusiastic' | 'Humorous' | 'Friendly';
   customPrompt: string;
 }
+
+export interface AIConfig {
+  provider: 'gemini' | 'custom';
+  apiKey: string;
+  baseUrl: string;
+  textModel: string;
+  imageModel: string;
+}
+
