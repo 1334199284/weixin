@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { 
   Copy, Check, Image as ImageIcon, Sparkles, RefreshCw, Edit2, CheckSquare, 
   ChevronRight, Heart, Share2, HelpCircle, Trash2, Upload, Undo2
@@ -79,6 +79,320 @@ export default function WeChatPreview({
   const [quotaNotice, setQuotaNotice] = useState<string | null>(null);
 
   const hiddenHtmlContainerRef = useRef<HTMLDivElement>(null);
+
+  // Local drafts interface definition
+  interface LocalDraft {
+    id: string;
+    title: string;
+    subtitle: string;
+    savedAt: string;
+    cover: string;
+    article: WeChatArticle;
+    author?: string;
+  }
+
+  // WeChat Official Accounts Publishing States
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [publishAppId, setPublishAppId] = useState(() => localStorage.getItem("wechat_mp_appid") || "");
+  const [publishAppSecret, setPublishAppSecret] = useState(() => localStorage.getItem("wechat_mp_appsecret") || "");
+  const [publishTitle, setPublishTitle] = useState(article.title);
+  const [publishAuthor, setPublishAuthor] = useState(() => localStorage.getItem("wechat_mp_author") || "路亚玩家");
+  const [publishDigest, setPublishDigest] = useState(article.subtitle);
+  const [selectedCover, setSelectedCover] = useState(coverUrl);
+  const [declareOriginal, setDeclareOriginal] = useState(true);
+  const [addToCollect, setAddToCollect] = useState(false);
+  const [collectId, setCollectId] = useState(() => localStorage.getItem("wechat_mp_collection_id") || "");
+  const [schedulePublish, setSchedulePublish] = useState(false);
+  const [publishToDraft, setPublishToDraft] = useState(false);
+  const [schedTime, setSchedTime] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+    const day = String(tomorrow.getDate()).padStart(2, "0");
+    const hours = String(tomorrow.getHours()).padStart(2, "0");
+    const minutes = String(tomorrow.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  });
+
+  const [serverPublicIp, setServerPublicIp] = useState("正在获取...");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
+
+  // Local drafts & Album selections state
+  const [localDrafts, setLocalDrafts] = useState<LocalDraft[]>(() => {
+    try {
+      const saved = localStorage.getItem("wechat_article_drafts");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [activeTab, setActiveTab] = useState<"publish" | "drafts">("publish");
+  const [draftSaveSuccess, setDraftSaveSuccess] = useState<string | null>(null);
+
+  // Album/Collection Fetch States
+  interface FetchAlbumItem {
+    album_id: number;
+    album_info: {
+      title: string;
+      author: string;
+      cover_img: string;
+    };
+  }
+
+  const [fetchingAlbums, setFetchingAlbums] = useState(false);
+  const [fetchedAlbums, setFetchedAlbums] = useState<FetchAlbumItem[]>([]);
+  const [albumFetchError, setAlbumFetchError] = useState<string | null>(null);
+
+  // File Input Ref for Cover Image Select
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync title and subtitle with the generated article
+  useEffect(() => {
+    setPublishTitle(article.title);
+    setPublishDigest(article.subtitle);
+  }, [article]);
+
+  useEffect(() => {
+    setSelectedCover(useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl);
+  }, [coverUrl, coverIllustrationUrl, useVectorGraphics]);
+
+  // Load public IP
+  useEffect(() => {
+    fetch("/api/server-info")
+      .then(r => r.json())
+      .then(d => setServerPublicIp(d.publicIp || "127.0.0.1"))
+      .catch(() => setServerPublicIp("127.0.0.1"));
+  }, []);
+
+  // Save changes to localStorage automatically
+  useEffect(() => {
+    localStorage.setItem("wechat_mp_appid", publishAppId);
+  }, [publishAppId]);
+
+  useEffect(() => {
+    localStorage.setItem("wechat_mp_appsecret", publishAppSecret);
+  }, [publishAppSecret]);
+
+  useEffect(() => {
+    localStorage.setItem("wechat_mp_author", publishAuthor);
+  }, [publishAuthor]);
+
+  useEffect(() => {
+    localStorage.setItem("wechat_mp_collection_id", collectId);
+  }, [collectId]);
+
+  // Prevent scroll propagation to background under the modal overlay
+  useEffect(() => {
+    if (showPublishModal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showPublishModal]);
+
+  // Synchronously store local drafts
+  useEffect(() => {
+    try {
+      localStorage.setItem("wechat_article_drafts", JSON.stringify(localDrafts));
+    } catch (err) {
+      console.error("无法写入草稿序列到本地存储：", err);
+    }
+  }, [localDrafts]);
+
+  // Read local file as Base64 to apply as Cover Image
+  const handleLocalCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("图片体积太大：微信限制封面图片上限为 2MB，请先压缩后再上传。");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64Str = event.target?.result as string;
+      if (base64Str) {
+        setSelectedCover(base64Str);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Draft operations
+  const handleSaveToLocalDrafts = () => {
+    const newDraft: LocalDraft = {
+      id: String(Date.now()),
+      title: publishTitle || article.title,
+      subtitle: publishDigest || article.subtitle,
+      savedAt: new Date().toLocaleString("zh-CN"),
+      cover: selectedCover,
+      article: JSON.parse(JSON.stringify(article)), // Deep clone to avoid reactive mutation
+      author: publishAuthor
+    };
+
+    setLocalDrafts(prev => [newDraft, ...prev]);
+    setDraftSaveSuccess("🎉 本地备份保存成功！您可以在下方选项卡中回溯和跨会话恢复。");
+    setTimeout(() => setDraftSaveSuccess(null), 4000);
+  };
+
+  const handleLoadLocalDraft = (draft: LocalDraft) => {
+    onUpdateArticle(draft.article);
+    setPublishTitle(draft.title);
+    setPublishDigest(draft.subtitle);
+    setSelectedCover(draft.cover);
+    if (draft.author) {
+      setPublishAuthor(draft.author);
+    }
+    setDraftSaveSuccess(`📂 草稿恢复载入成功：《${draft.title.substring(0, 15)}...》`);
+    setTimeout(() => setDraftSaveSuccess(null), 4000);
+  };
+
+  const handleDeleteLocalDraft = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm("确信要彻底擦除此本地草稿吗？此操作将永远擦除该条备份。")) {
+      setLocalDrafts(prev => prev.filter(d => d.id !== id));
+    }
+  };
+
+  // Fetch collections list directly from WeChat server
+  const handleFetchCollections = async () => {
+    if (!publishAppId || !publishAppSecret) {
+      setAlbumFetchError("请先在左侧输入微信开发者凭证：AppID 和 AppSecret。");
+      return;
+    }
+
+    setFetchingAlbums(true);
+    setAlbumFetchError(null);
+    try {
+      const url = `/api/wechat/albums?appId=${encodeURIComponent(publishAppId)}&appSecret=${encodeURIComponent(publishAppSecret)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`服务器通道响应异常：HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.success) {
+        setFetchedAlbums(data.albums || []);
+        if ((data.albums || []).length > 0) {
+          if (!collectId) {
+            setCollectId(String(data.albums[0].album_id));
+          }
+        } else {
+          setAlbumFetchError("该微信公众号后台尚未创建任何合集专栏。请登录 WeChat 后台创建后再同步。");
+        }
+      } else {
+        setAlbumFetchError(data.error || "获取合集失败");
+      }
+    } catch (err: any) {
+      setAlbumFetchError(`网路请求失败：${err.message || err}`);
+    } finally {
+      setFetchingAlbums(false);
+    }
+  };
+
+  // Generate high-traffic suggested WeChat titles dynamically based on current article title
+  const getSuggestedTitles = (): Array<{ id: string; label: string; title: string }> => {
+    const clean = article.title ? article.title.replace(/【.*?】/g, "").trim() : "第一套路亚装备";
+    const shortText = clean.length > 12 ? clean.substring(0, 12) : clean;
+    return [
+      {
+        id: "v1",
+        label: "【痛点避坑】干货式",
+        title: `【新手避坑】新手究竟该怎么买第一套《${shortText}》？听老钓手一句劝，省下千元冤枉钱！`
+      },
+      {
+        id: "v2",
+        label: "【真诚告白】掏心窝",
+        title: `听老兄一句劝！别傻傻砸几千买奢侈顶级装备了，老实说新手选用它就管够！`
+      },
+      {
+        id: "v3",
+        label: "【高低对比】强对比",
+        title: `千元级神轮和百元《${shortText.substring(0, 5)}》到底相差多少？不玩虚的，老手今天跟你交底！`
+      },
+      {
+        id: "v4",
+        label: "【硬核反转】打破常识",
+        title: `大家都吹水滴轮帅气好甩，为什么我劝你第一台入门必须闭眼买纺车轮？`
+      }
+    ];
+  };
+
+  const handlePublishToWeChat = async () => {
+    if (!publishAppId || !publishAppSecret) {
+      setPublishResult({
+        success: false,
+        message: "校验失败：请在左侧配置面板中填写微信公众号 AppID 和 AppSecret 后重试。"
+      });
+      return;
+    }
+
+    setIsPublishing(true);
+    setPublishResult(null);
+
+    const formattedHtml = generateWeChatInlineHtml(
+      article, 
+      themeId, 
+      layoutId, 
+      coverUrl, 
+      sectionImages, 
+      useVectorGraphics,
+      window.location.origin,
+      coverIllustrationUrl,
+      sectionIllustrations,
+      deletedImages
+    );
+
+    try {
+      const res = await fetch("/api/wechat/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          appId: publishAppId,
+          appSecret: publishAppSecret,
+          title: publishTitle,
+          author: publishAuthor,
+          digest: publishDigest,
+          contentHtml: formattedHtml,
+          coverUrl: selectedCover,
+          originalDeclaration: declareOriginal,
+          addToCollection: addToCollect,
+          collectionId: collectId,
+          isScheduled: schedulePublish,
+          scheduledTime: schedTime,
+          publishToDraft: publishToDraft
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPublishResult({
+          success: true,
+          message: data.message,
+          data: data
+        });
+      } else {
+        setPublishResult({
+          success: false,
+          message: data.error || "未能成功同步或正式发布，请检查您的凭证或确保 IP 白名单正确。"
+        });
+      }
+    } catch (err: any) {
+      setPublishResult({
+        success: false,
+        message: `通信链路发送异常: ${err.message || err}`
+      });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   // Copy Plain Text helper
   const copyPlainText = () => {
@@ -566,6 +880,16 @@ ${article.outro}
               <Sparkles className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
             )}
             {copyHtmlSuccess ? "样式已完美复制！" : "一键复制到公众号"}
+          </button>
+
+          {/* Interactive Official WeChat Publish */}
+          <button
+            onClick={() => setShowPublishModal(true)}
+            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs shrink-0"
+            title="填写封面、标题、原创声明、添加到合集并一键同步保存至您的微信公众号后台草稿箱！"
+          >
+            <Share2 className="h-3.5 w-3.5 text-white" />
+            同步至公众号草稿箱
           </button>
         </div>
       </div>
@@ -1250,6 +1574,629 @@ ${article.outro}
 
         </div>
       </div>
+
+      {/* WeChat Official Account Sync & Publish Modal Overlay */}
+      <AnimatePresence>
+        {showPublishModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl shadow-2xl border border-gray-100 max-w-4xl w-full overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
+            >
+              {/* Left Config Panel */}
+              <div className="md:w-5/12 bg-slate-50 p-6 border-r border-gray-100 flex flex-col justify-between overflow-y-auto">
+                <div className="space-y-5">
+                  <div className="flex items-center gap-2 text-emerald-700">
+                    <Share2 className="h-5 w-5 font-bold" />
+                    <h3 className="text-base font-black tracking-tight text-gray-800">微信公众开放授权</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    本篇一键发布使用了微信官方草稿箱上传接口。配置以下从微信公众平台（mp.weixin.cn）获取的开发者凭证来建立安全隧道连接：
+                  </p>
+
+                  <div className="space-y-3.5">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-gray-700">微信 AppID</label>
+                      <input
+                        type="text"
+                        value={publishAppId}
+                        onChange={(e) => setPublishAppId(e.target.value)}
+                        placeholder="请输入 wx 开头的 AppID..."
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-xl bg-white focus:outline-emerald-505 text-gray-800 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-gray-700">微信 AppSecret</label>
+                      <input
+                        type="password"
+                        value={publishAppSecret}
+                        onChange={(e) => setPublishAppSecret(e.target.value)}
+                        placeholder="请输入 AppSecret 密钥..."
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-xl bg-white focus:outline-emerald-505 text-gray-850 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Whitelisting Assistant */}
+                  <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                        🛡️ 微信专属 IP 白名单:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(serverPublicIp);
+                          alert(`复制成功！请登录公众号后台填入「基本配置」->「IP白名单」中。\nIP: ${serverPublicIp}`);
+                        }}
+                        className="text-[10px] font-extrabold text-emerald-600 hover:text-emerald-700 underline"
+                      >
+                        双击复制
+                      </button>
+                    </div>
+                    <div className="text-center font-mono text-xs font-bold bg-white text-emerald-900 py-1.5 px-3 border border-emerald-100 rounded-xl select-all shadow-3xs tracking-wide">
+                      {serverPublicIp}
+                    </div>
+                    <p className="text-[10px] text-emerald-600/80 leading-normal">
+                      💡 微信对 API 调用具备高强度防御体系。若执行一键发布时提示 IP 验证错误，请登录公众号后台填入此服务器出口 IP 地址。
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-gray-400 mt-6 pt-3 border-t border-gray-200/50 flex items-center justify-between">
+                  <span>SSL 指纹安全多向加密传送</span>
+                  <span className="text-emerald-600 font-bold">微信官方接口对接</span>
+                </div>
+              </div>
+
+              {/* Right Content Panel - Configured with overscroll containment */}
+              <div 
+                className="md:w-7/12 p-6 flex flex-col justify-between overflow-y-auto"
+                style={{ overscrollBehavior: "contain" }}
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                    <div>
+                      <h3 className="text-base font-black tracking-tight text-gray-900 font-sans">
+                        微信一键同步助手
+                      </h3>
+                      <p className="text-[10px] text-gray-400 mt-0.5">一键群发或暂存、素材直传、原创自检、草稿跨期备份</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowPublishModal(false);
+                        setPublishResult(null);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Tab Navigation Bars */}
+                  <div className="flex border-b border-gray-100 select-none pb-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("publish")}
+                      className={`flex-1 py-2 text-xs font-bold text-center transition-all border-b-2 ${
+                        activeTab === "publish"
+                          ? "text-emerald-700 border-emerald-600 bg-emerald-50/20"
+                          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50/40 border-transparent"
+                      }`}
+                    >
+                      ✍️ 填写图文发布参数
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("drafts")}
+                      className={`flex-1 py-2 text-xs font-bold text-center transition-all border-b-2 flex items-center justify-center gap-1.5 ${
+                        activeTab === "drafts"
+                          ? "text-emerald-700 border-emerald-600 bg-emerald-50/20"
+                          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50/40 border-transparent"
+                      }`}
+                    >
+                      🗄️ 本地备用草稿箱
+                      {localDrafts.length > 0 && (
+                        <span className="bg-emerald-650 text-white text-[9px] px-1.5 py-0.5 rounded-full font-mono font-black scale-90">
+                          {localDrafts.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {draftSaveSuccess && (
+                    <div className="p-2.5 bg-emerald-50 text-emerald-800 text-xs rounded-xl font-medium border border-emerald-100 text-center animate-pulse-subtle">
+                      {draftSaveSuccess}
+                    </div>
+                  )}
+
+                  {activeTab === "publish" ? (
+                    /* Active Tab A: Publisher configuration */
+                    <div className="space-y-3.5">
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-xs font-bold text-gray-700">✍️ 微信公众号标题</label>
+                          <span className="text-[10px] text-gray-400 font-medium">{publishTitle.length} 字 (推荐 15-32 字)</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={publishTitle}
+                          onChange={(e) => setPublishTitle(e.target.value)}
+                          placeholder="请输入微信头条图文标题..."
+                          className="w-full text-xs p-2.5 border border-gray-200 rounded-xl font-bold text-gray-800 focus:outline-emerald-500"
+                        />
+
+                        {/* High-Traffic Title Formula Interactive Assistant */}
+                        <div className="mt-2.5 p-3 bg-emerald-50/45 border border-emerald-100/70 rounded-2xl space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-black text-emerald-800 flex items-center gap-1">
+                              🔥 专属公众号爆款高流量标题建议列表：
+                            </span>
+                            <span className="text-[9px] text-emerald-600 font-bold bg-emerald-100/50 px-1.5 py-0.5 rounded-sm animate-pulse-subtle">
+                              点击一键应用
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {getSuggestedTitles().map((s) => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => setPublishTitle(s.title)}
+                                className="text-[10px] p-2.5 text-left bg-white border border-gray-100 hover:border-emerald-350 hover:bg-emerald-50/10 text-gray-700 hover:text-emerald-950 rounded-xl transition-all duration-200 shadow-3xs hover:shadow-2xs leading-relaxed flex flex-col justify-between group active:scale-97 cursor-pointer"
+                                title="点击为此发布设置此标题"
+                              >
+                                <span className="text-[8px] text-emerald-650 font-black mb-1 group-hover:text-emerald-700 transition">
+                                  {s.label}
+                                </span>
+                                <span className="line-clamp-2 w-full font-bold text-gray-750">
+                                  {s.title}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-[9px] text-emerald-650/90 leading-tight">
+                            💡 <b>优质流量口径：</b>高点击爆文核心在于具有<b>老友对话感</b>与<b>痛点指向括号标</b>（例如《听老钓手一句劝...买它就够了！》），摒弃传统僵硬说教，使点击率成倍上升！
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="block text-xs font-bold text-gray-700">👤 署名作者</label>
+                          <input
+                            type="text"
+                            value={publishAuthor}
+                            onChange={(e) => setPublishAuthor(e.target.value)}
+                            placeholder="作者笔名..."
+                            className="w-full text-xs p-2.5 border border-gray-200 rounded-xl text-gray-800 font-medium focus:outline-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                            🛡️ 原创声明
+                          </label>
+                          <div className="flex items-center h-10 pl-1">
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={declareOriginal}
+                                onChange={(e) => setDeclareOriginal(e.target.checked)}
+                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                              />
+                              <span className="text-xs font-semibold text-gray-600">声明文字原创</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-xs font-bold text-gray-700">📝 图文群发摘要 (Subtitle)</label>
+                          <span className="text-[10px] text-gray-400 font-sans">{publishDigest.length}/120 字</span>
+                        </div>
+                        <textarea
+                          value={publishDigest}
+                          onChange={(e) => setPublishDigest(e.target.value.slice(0, 120))}
+                          rows={2}
+                          placeholder="简明扼要的一两句前言，将作为消息列表摘要卡片展示..."
+                          className="w-full text-xs p-2.5 border border-gray-200 rounded-xl text-gray-700 leading-relaxed focus:outline-emerald-500"
+                        />
+                      </div>
+
+                      {/* Cover Grid Selector */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-xs font-bold text-gray-700">🖼️ 封面图片选择（支持本地照片上传或选用以下文章配图）</label>
+                          <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded-sm">支持本地文件</span>
+                        </div>
+                        
+                        {/* Hidden File Input for Native Local Cover Uplader */}
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleLocalCoverUpload}
+                          accept="image/*"
+                          className="hidden"
+                        />
+
+                        <div className="grid grid-cols-4 gap-2">
+                          {/* Option 0: Local Image Upload Trigger block */}
+                          <div
+                            onClick={() => fileInputRef.current?.click()}
+                            className={`relative rounded-xl overflow-hidden border-2 border-dashed cursor-pointer aspect-video transition-all shadow-3xs flex flex-col items-center justify-center bg-slate-50 hover:bg-emerald-50/10 ${
+                              selectedCover && selectedCover.startsWith("data:")
+                                ? "border-emerald-500 ring-2 ring-emerald-500/20 scale-102"
+                                : "border-gray-300 hover:border-emerald-400"
+                            }`}
+                          >
+                            {selectedCover && selectedCover.startsWith("data:") ? (
+                              <img
+                                src={selectedCover}
+                                className="w-full h-full object-cover"
+                                alt="本地已上传封面"
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center justify-center p-1 text-center">
+                                <Upload className="h-4 w-4 text-emerald-600 mb-0.5 animate-pulse" />
+                                <span className="text-[9px] text-gray-500 font-bold">上传本地封面</span>
+                              </div>
+                            )}
+                            <div className="absolute inset-x-0 bottom-0 bg-emerald-600/90 text-[7.5px] text-white py-0.5 text-center truncate font-black">
+                              {selectedCover && selectedCover.startsWith("data:") ? "本地已使用" : "点击上传 2M内"}
+                            </div>
+                          </div>
+
+                          {/* Option 1: AI Main Cover */}
+                          <div
+                            onClick={() => setSelectedCover(useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl)}
+                            className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs ${
+                              selectedCover === (useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl)
+                                ? "border-emerald-500 ring-3 ring-emerald-500/20 scale-102 opacity-100"
+                                : "border-gray-200 opacity-60 hover:opacity-100"
+                            }`}
+                          >
+                            <img
+                              src={getProxiedUrl(useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl)}
+                              className="w-full h-full object-cover"
+                              alt="首推主海报"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[8px] text-white py-0.5 text-center truncate font-bold">主配图/封面</div>
+                            {selectedCover === (useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl) && (
+                              <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs">
+                                <Check className="h-2 w-2 font-bold" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Options 2+: Section illustrations inside article list */}
+                          {article.sections.map((sec) => {
+                            const currentSecImg = useVectorGraphics ? sectionIllustrations[sec.id] : sectionImages[sec.id];
+                            if (!currentSecImg) return null;
+                            const isSel = selectedCover === currentSecImg;
+                            return (
+                              <div
+                                key={sec.id}
+                                onClick={() => setSelectedCover(currentSecImg)}
+                                className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs ${
+                                  isSel
+                                    ? "border-emerald-500 ring-3 ring-emerald-500/20 scale-102 opacity-100"
+                                    : "border-gray-200 opacity-60 hover:opacity-100"
+                                }`}
+                              >
+                                <img
+                                  src={getProxiedUrl(currentSecImg)}
+                                  className="w-full h-full object-cover"
+                                  alt={sec.title}
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[8px] text-white py-0.5 text-center truncate font-bold">
+                                  {sec.title.substring(0, 4)}配图
+                                </div>
+                                {isSel && (
+                                  <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs">
+                                    <Check className="h-2 w-2 font-bold" />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Draft Box vs Formal Publish selection */}
+                      <div className="p-3 bg-emerald-50/25 border border-emerald-100 rounded-2xl flex items-center justify-between select-none font-sans">
+                        <div className="flex items-center gap-3">
+                          <input
+                            id="publish_to_draft_checkbox"
+                            type="checkbox"
+                            checked={publishToDraft}
+                            onChange={(e) => setPublishToDraft(e.target.checked)}
+                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
+                          />
+                          <label htmlFor="publish_to_draft_checkbox" className="text-left cursor-pointer">
+                            <span className="text-xs font-bold text-gray-800 flex items-center gap-1">
+                              🗂️ 仅保存至微信公众号草稿箱 (不勾选则同步并【一键正式发表】)
+                            </span>
+                            <span className="text-[10px] text-gray-450 block mt-0.5">
+                              勾选后：文章作为草稿暂存，粉丝不可见；未勾选：直接发表并生成正式访问链接。
+                            </span>
+                          </label>
+                        </div>
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-sm shrink-0 transition-all border ${
+                          publishToDraft 
+                            ? "bg-slate-100 text-slate-700 border-slate-200" 
+                            : "bg-emerald-100 text-emerald-800 border-emerald-250 animate-pulse-subtle"
+                        }`}>
+                          {publishToDraft ? "仅存草稿" : "正式发表"}
+                        </span>
+                      </div>
+
+                      {/* Advanced controls */}
+                      <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+                        {/* Album/Collection Option */}
+                        <div className="p-2.5 bg-slate-50/70 rounded-2xl space-y-2">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={addToCollect}
+                              onChange={(e) => setAddToCollect(e.target.checked)}
+                              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                            />
+                            <span className="text-xs font-bold text-gray-700">添加到合集专栏</span>
+                          </label>
+
+                          {addToCollect && (
+                            <div className="space-y-2 mt-1.5 border-t border-slate-200/50 pt-2 text-left">
+                              {/* Sync from WeChat button */}
+                              <button
+                                type="button"
+                                onClick={handleFetchCollections}
+                                disabled={fetchingAlbums}
+                                className="w-full text-[9.5px] py-1.5 bg-white hover:bg-emerald-50 hover:text-emerald-800 text-emerald-700 font-black border border-emerald-200 rounded-lg shadow-4xs transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                              >
+                                {fetchingAlbums ? (
+                                  <>
+                                    <RefreshCw className="h-3 w-3 animate-spin text-emerald-600" />
+                                    请求公众号接口中...
+                                  </>
+                                ) : (
+                                  <>
+                                    📡 实时获取当前公众号合集列表
+                                  </>
+                                )}
+                              </button>
+
+                              {albumFetchError && (
+                                <p className="text-[9px] text-red-500 bg-red-50/40 border border-red-100 p-1.5 rounded-md leading-relaxed">
+                                  ⚠️ {albumFetchError}
+                                </p>
+                              )}
+
+                              {fetchedAlbums && fetchedAlbums.length > 0 ? (
+                                <div className="space-y-1">
+                                  <label className="block text-[8.5px] font-black text-emerald-800">已检索出合集专栏 (下拉选择):</label>
+                                  <select
+                                    value={collectId}
+                                    onChange={(e) => setCollectId(e.target.value)}
+                                    className="w-full text-[10px] p-2 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-emerald-500 font-bold"
+                                  >
+                                    {fetchedAlbums.map((alb) => (
+                                      <option key={alb.album_id} value={String(alb.album_id)}>
+                                        📁 {alb.album_info?.title} (ID: {alb.album_id})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <label className="block text-[9px] font-bold text-gray-500">微信合集 ID (手动输入):</label>
+                                  <input
+                                    type="text"
+                                    value={collectId}
+                                    onChange={(e) => setCollectId(e.target.value)}
+                                    placeholder="请输入合集 ID (如: 12456)"
+                                    className="w-full text-[10px] p-2 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-emerald-550 font-mono"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Scheduled option */}
+                        <div className="p-2.5 bg-slate-50/70 rounded-2xl space-y-2">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={schedulePublish}
+                              onChange={(e) => setSchedulePublish(e.target.checked)}
+                              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                            />
+                            <span className="text-xs font-bold text-gray-700">定时/预约发布</span>
+                          </label>
+                          {schedulePublish && (
+                            <input
+                              type="datetime-local"
+                              value={schedTime}
+                              onChange={(e) => setSchedTime(e.target.value)}
+                              className="w-full text-[10px] p-2 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-emerald-500 text-center font-bold"
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Save Backup Button inside Publish settings */}
+                      <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-dashed border-gray-200 font-sans">
+                        <span className="text-[10px] text-gray-500 font-medium">⚠️ 担心内容丢失？您可随时一键存至本地备份箱！</span>
+                        <button
+                          type="button"
+                          onClick={handleSaveToLocalDrafts}
+                          className="text-[10px] font-extrabold bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 py-1 px-2.5 rounded-lg transition active:scale-97 cursor-pointer flex items-center gap-1 shadow-3xs"
+                        >
+                          💾 新增本地备份
+                        </button>
+                      </div>
+
+                    </div>
+                  ) : (
+                    /* Active Tab B: Grassroots Local Draft Box */
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-gray-100/50">
+                        <div className="space-y-0.5 text-left">
+                          <h4 className="text-xs font-black text-gray-800">💾 直接备份当前工作区状态</h4>
+                          <p className="text-[9.5px] text-gray-400">将您正在修改的文章内容与配置完好储存在浏览器会话沙箱中。</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleSaveToLocalDrafts}
+                          className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1.5 px-3 rounded-xl transition shadow-3xs active:scale-97 cursor-pointer flex items-center gap-1"
+                        >
+                          💾 备份当前
+                        </button>
+                      </div>
+
+                      <div 
+                        className="space-y-2.5 max-h-[42vh] overflow-y-auto pr-1"
+                        style={{ overscrollBehavior: "contain" }}
+                      >
+                        {localDrafts.length === 0 ? (
+                          <div className="text-center py-14 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200 space-y-2">
+                            <span className="text-2xl block text-gray-400 select-none">🗄️</span>
+                            <h5 className="text-xs font-bold text-gray-400">本地草稿箱为空</h5>
+                            <p className="text-[10px] text-gray-400 max-w-xs mx-auto px-4 leading-relaxed">
+                              本章备份草稿属于浏览器离线沙盘，可完美保存您的编辑大纲、配图、标题设定，即使重新打开页面也可以在这里随时载入一键恢复！
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {localDrafts.map((d) => (
+                              <div
+                                key={d.id}
+                                onClick={() => handleLoadLocalDraft(d)}
+                                className="group flex gap-3 p-2.5 bg-white border border-gray-200 hover:border-emerald-350 hover:bg-emerald-50/5 rounded-2xl shadow-4xs cursor-pointer transition relative items-center text-left"
+                                title="点击载入此草稿到编辑区"
+                              >
+                                {/* Cover image of the draft */}
+                                <div className="w-14 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-slate-100 border border-gray-100 shadow-4xs">
+                                  <img 
+                                    src={d.cover && d.cover.startsWith("data:") ? d.cover : getProxiedUrl(d.cover)} 
+                                    className="w-full h-full object-cover" 
+                                    alt="封面" 
+                                    referrerPolicy="no-referrer" 
+                                  />
+                                </div>
+
+                                {/* Content Details */}
+                                <div className="flex-1 min-w-0 space-y-0.5">
+                                  <h5 className="text-xs font-black text-gray-800 truncate group-hover:text-emerald-700 transition">
+                                    {d.title || "未命名草稿"}
+                                  </h5>
+                                  <p className="text-[9px] text-gray-400 truncate leading-relaxed">
+                                    {d.subtitle || "无文章摘要"}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 text-[8px] text-gray-400 font-medium">
+                                    <span className="bg-slate-100 text-gray-500 font-bold px-1 rounded-sm">
+                                      👤 {d.author || "无作者"}
+                                    </span>
+                                    <span>•</span>
+                                    <span>📅 {d.savedAt}</span>
+                                  </div>
+                                </div>
+
+                                {/* Controls overlay */}
+                                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleLoadLocalDraft(d)}
+                                    className="text-[9px] bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 border border-emerald-200 hover:border-emerald-600 py-1 px-2.5 rounded-lg font-black transition active:scale-95 cursor-pointer"
+                                  >
+                                    恢复载入
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleDeleteLocalDraft(d.id, e)}
+                                    className="text-gray-400 hover:text-red-650 p-1.5 rounded-lg hover:bg-red-50/50 transition cursor-pointer"
+                                    title="清除此草稿"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+
+                {/* Submit actions / notifications */}
+                <div className="space-y-3 mt-4 pt-3 border-t border-gray-100">
+                  {publishResult && (
+                    <div
+                      className={`p-3 rounded-2xl text-xs flex gap-2.5 items-start leading-relaxed ${
+                        publishResult.success
+                          ? "bg-emerald-50 border border-emerald-150 text-emerald-800"
+                          : "bg-red-50 border border-red-155 text-red-850"
+                      }`}
+                    >
+                      <span className="text-lg">{publishResult.success ? "🎉" : "⚠️"}</span>
+                      <div className="space-y-1 flex-1">
+                        <p className="font-bold">{publishResult.success ? "成功发布到草稿箱！" : "发布通道出错"}</p>
+                        <p className="text-[11px] opacity-90">{publishResult.message}</p>
+                        {publishResult.success && publishResult.data && (
+                          <div className="text-[10px] bg-emerald-100/40 p-2 rounded-lg border border-emerald-200/50 mt-1.5 space-y-1 font-mono">
+                            <div>Draft MediaID: <span className="font-bold text-emerald-950 select-all">{publishResult.data.mediaId}</span></div>
+                            {publishResult.data.collectionStatus && <div>合集关联状态: {publishResult.data.collectionStatus}</div>}
+                            <div>发布部署日程: {publishResult.data.publishingSchedule}</div>
+                            {declareOriginal && <div>原创保护状态: ✅ 已申请微信原创保护</div>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPublishModal(false);
+                        setPublishResult(null);
+                      }}
+                      className="px-4 py-2 border border-gray-200 text-gray-600 hover:text-gray-800 rounded-xl text-xs font-bold transition"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePublishToWeChat}
+                      disabled={isPublishing}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-xs bg-linear-to-b active:scale-98 disabled:opacity-50"
+                    >
+                      {isPublishing ? (
+                        <>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          {publishToDraft ? "正在保存到草稿箱..." : "正在同步并一键发表..."}
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
+                          {publishToDraft ? "确认仅保存至草稿箱" : "确认一键同步并正式发表"}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
