@@ -36,6 +36,7 @@ export interface GenerationSettings {
   level: 'Beginner' | 'Intermediate' | 'Expert';
   tone: 'Professional' | 'Enthusiastic' | 'Humorous' | 'Friendly';
   customPrompt: string;
+  contentSystemPrompt?: string;
 }
 
 export interface AIConfig {

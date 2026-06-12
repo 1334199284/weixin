@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Fish, Compass, Sparkles, BookOpen, Layers, Check, Settings, Eye, EyeOff, Info } from "lucide-react";
 import { WECHAT_THEMES } from "../lib/wechat-themes";
 import { GenerationSettings, ThemePreset, LayoutPreset, AIConfig } from "../types";
+import { DEFAULT_CONTENT_SYSTEM_PROMPT } from "../data/courses";
 
 interface EditorSettingsProps {
   settings: GenerationSettings;
@@ -22,6 +23,7 @@ export default function EditorSettings({
 }: EditorSettingsProps) {
   const [showAiSetup, setShowAiSetup] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [showPromptSetup, setShowPromptSetup] = useState(false);
 
   const tones = [
     { id: "Friendly", name: "亲切幽默 (Warm & Witty)", desc: "适合大众群体，拉近距离" },
@@ -396,15 +398,18 @@ export default function EditorSettings({
         )}
       </div>
 
-      {/* Custom prompt override */}
-      <div className="space-y-2">
-        <label className="block text-sm font-semibold text-gray-700">7. 补充润色要求 (选填)</label>
-        <input
-          type="text"
+      {/* 7. Custom prompt override */}
+      <div className="space-y-2 border-t border-gray-100 pt-4">
+        <label className="block text-sm font-semibold text-gray-700">7. 个性化补充要求 / 用户提示词 (选填)</label>
+        <p className="text-xs text-gray-400 leading-normal">
+          所有生成均会自动在后台应用专业的公众号高流量排版规范与平等探讨论述语境。您只需在此输入个性化的补充指令（例如：<i>“多提及一点环保放流、推荐使用微物竿，不要出现重装备”</i>）。
+        </p>
+        <textarea
           value={settings.customPrompt}
           onChange={(e) => onChange({ customPrompt: e.target.value })}
-          className="w-full text-xs p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition"
-          placeholder="例如：提一下保护资源、多提一下微物抛投..."
+          rows={4}
+          className="w-full text-xs p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition resize-none font-sans leading-relaxed"
+          placeholder="留空不填也不影响使用。默认已为您应用内置的公众号黄金排版与友好平等交流法则..."
         />
       </div>
 

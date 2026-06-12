@@ -17,10 +17,21 @@ const generatedImages = new Map<string, { mimeType: string; data: string }>();
 
 // Initialize Gemini Client dynamically with User-Agent set for telemetry as required
 function getAiClient(customApiKey?: string) {
-  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  let apiKey = "";
+  if (customApiKey && typeof customApiKey === "string") {
+    apiKey = customApiKey.trim();
+  }
+  
+  // If the key is blank, or contains password mask characters (dots/asterisks), fall back to server env
+  if (!apiKey || apiKey.includes("•") || apiKey.includes("*") || apiKey === "undefined" || apiKey === "null") {
+    apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  }
+
+  // If there is still no key, or it's a default example placeholder, return null to activate fallback demo mode
+  if (!apiKey || apiKey.includes("your_") || apiKey.includes("YOUR_") || apiKey.length < 5) {
     return null;
   }
+
   return new GoogleGenAI({
     apiKey: apiKey,
     httpOptions: {
@@ -55,18 +66,67 @@ function cleanJsonResponse(rawText: string): string {
 }
 
 // ----------------------------------------------------
-// API: Generate Lure Fishing WeChat Article
+// API: Generate Lure Fishing WeChat Article (POST required, GET returns info)
 // ----------------------------------------------------
-app.post("/api/generate-article", async (req, res) => {
-  try {
-    const { outline, theme, level, tone, customPrompt, aiConfig } = req.body;
+app.all("/api/generate-article", async (req, res) => {
+  if (req.method !== "POST" && req.method !== "GET") {
+    return res.status(405).json({ success: false, error: "Method Not Allowed" });
+  }
 
+  let outline: any;
+  let theme: any;
+  let level: any;
+  let tone: any;
+  let customPrompt: any;
+  let contentSystemPrompt: any;
+  let aiConfig: any;
+
+  if (req.method === "GET") {
+    outline = req.query.outline;
+    theme = req.query.theme;
+    level = req.query.level;
+    tone = req.query.tone;
+    customPrompt = req.query.customPrompt;
+    contentSystemPrompt = req.query.contentSystemPrompt;
+    const qApiKey = req.query.apiKey || req.query.key || req.query.customApiKey;
+    if (qApiKey) {
+      aiConfig = {
+        provider: "gemini",
+        apiKey: qApiKey as string,
+      };
+    } else if (req.query.aiConfig) {
+      try {
+        aiConfig = JSON.parse(req.query.aiConfig as string);
+      } catch (e) {}
+    }
+  } else {
+    const body = req.body || {};
+    outline = body.outline;
+    theme = body.theme;
+    level = body.level;
+    tone = body.tone;
+    customPrompt = body.customPrompt;
+    contentSystemPrompt = body.contentSystemPrompt;
+    aiConfig = body.aiConfig;
+  }
+
+  try {
     const basePrompt = outline || `装备入门——选对工具事半功倍
 基础装备：路亚竿（推荐直柄竿，ML或M调泛用性强）、渔轮（新手首选纺车轮，不易炸线）、钓线（PE线搭配碳素前导线，兼顾强度与隐蔽性）。
 核心消耗品：拟饵的种类与选择（硬饵如米诺、亮片，软饵如卷尾蛆等）。
 必备配件：路亚钳、控鱼器、偏光镜等。`;
 
-    const instructions = `
+    let instructions = "";
+    if (contentSystemPrompt && contentSystemPrompt.trim().length > 0) {
+      // Process dynamic placeholders in user-configured instructions
+      instructions = contentSystemPrompt
+        .replaceAll("{outline}", basePrompt)
+        .replaceAll("{level}", level || 'Beginner')
+        .replaceAll("{tone}", tone || 'Friendly & Professional')
+        .replaceAll("{theme}", theme || 'Natural Green')
+        .replaceAll("{customPrompt}", customPrompt || 'None');
+    } else {
+      instructions = `
 You are a top-tier Chinese WeChat Official Account content creator specializing in outdoor sports and lure fishing (路亚钓鱼).
 Your task is to expand the provided outline into a highly engaging, structured, and informative WeChat subscription article (微信公众号文章) in Chinese.
 
@@ -78,20 +138,22 @@ Additional Instructions:
 - Article Tone: ${tone || 'Friendly & Professional'}
 - Theme Preference: ${theme || 'Natural Green'}
 - Custom Request: ${customPrompt || 'None'}
-- CRITICAL Branding Restriction: Do NOT use the brand/channel names "鱼佬圈" or "LEG" anywhere in the title, subtitle, introduction, text, or outro. Instead, use natural, welcoming generic names like "小路", "路亚老友", "老钓手", "路亚玩家", or write in first-person without specific branding.
-- CRITICAL Tone Constraint: Do NOT refer to this article as a "课" (lesson/class/course), "第x课", "课程", or anything similar. We want to be incredibly approachable, build genuine trust and rapport with the reader, and sound like a close fishing buddy sharing real-world tribal knowledge. Instead of "课", refer to it as an "入门指南", "实战秘籍", "干货分享", "经验精选" etc.
-- CRITICAL HIGH-TRAFFIC & VIRAL TITLE FORMULAS (公众号爆款高流量标题规范):
-  For the "title" field in the response, you MUST craft a headline conforming to one of the following high-traffic dual-segment structures to maximize read rates and click-through rates (CTR):
-  1. 【新手避坑/大不交税标签】+ 对话感十足的反转金句:
-     * 例如: \`【新手避坑】新手究竟该怎么买第一套路亚装备？听老钓手一句劝，省下千元冤枉钱！\`
-     * 例如: \`【实操大实话】大家都吹水滴轮帅气好甩，为什么我极力劝你第一台买纺车轮？\`
-  2. 【双段式强对比与痛点悬念】:
-     * 例如: \`千元级神轮和百元轮差距有多大？不玩虚的，今天路亚老友跟你说大实话\`
-     * 例如: \`为什么你总是炸线、还钓不到鱼？关键核心其实只在这一处致命细节上！\`
-  3. 【老钓友掏心窝告白 / 真诚面对面 (拉近距离，拒绝课感)】:
-     * 例如: \`听哥们一句劝！别傻傻直接在第一套竿线上砸大几千了，老实选用它就够了\`
-     * 例如: \`写给不干空军、不想再炒粉的新手：这套装备组合，带你极速爆护破零！\`
-  Make the title between 15 and 32 Chinese characters. It should sound extremely colloquial, authentic, and high-value — as if two angling buddies are sharing secrets in person. NEVER output boring academic titles like "路亚基础竿线轮推荐" or "路亚钓鱼的新手入门指南".
+- CRITICAL Perspective & Tone Constraint (平等、共情与共创视角): 
+  Do NOT use any patronizing, didactic, or authoritative phrasing. Do NOT use phrases like "xx劝你" (so-and-so advises you), "听老钓手/老玩家一句劝" (listen to my advice), "让我来告诉你" (let me tell you), or "听劝". Instead, address the reader with absolute equality, mutual respect, and from their own perspective (equal peer partnership). Use collaborative and warm expressions like "我们一起交流分享" (let's share and chat together), "新手朋友常会遇到类似的疑惑" (we often face similar questions as beginners), or "作为同好的一点心得共勉" (mutual encouragement from a fellow enthusiast). 
+  Do NOT refer to this article as a "课" (lesson/class/course), "第x课", "课程". Instead, refer to it as an "经验分享", "实战心得", "入门精选" or "干货拾遗".
+
+- CRITICAL HIGH-TRAFFIC & VIRAL TITLE FORMULAS (公众号爆款高流量标题规范 - 严禁傲慢、严禁命令劝说):
+  For the "title" field in the response, craft a compelling title that is highly attractive but retains absolute equality and mutual exploration. Avoid preachy phrases like "劝你" or "听我一句劝". Conform to these guidelines:
+  1. 【痛点同频与共同探讨结构】:
+     * 例如: \`【避坑指南】买第一套路亚装备时，那些我们容易共享的弯路与实在预算\`
+     * 例如: \`【实操心得】大家都说水滴轮帅气好甩，为什么新手阶段我们更建议从纺车轮起步？\`
+  2. 【双段式体验共鸣与无损悬念】:
+     * 例如: \`百元级与千元级装备究竟差在哪些细节？不玩虚的，同好真实体验对比\`
+     * 例如: \`总是炸线或找不到咬讯？或许我们只需要调整这一处细微的收线状态\`
+  3. 【真实同好交流视角 (拉近距离，拒绝居高临下)】:
+     * 例如: \`预算有限也想轻松享受作钓？这套经典搭配或许是更适合我们的温和选择\`
+     * 例如: \`告别空军与频繁炒粉：一份适合新手的路亚搭配与平阶演练心得\`
+  Make the title between 15 and 32 Chinese characters. It must sound friendly, authentic, and co-exploratory — as if sharing genuine thoughts over a campfire. NEVER output boring academic titles or hype-driven titles.
 
 - CRITICAL Lure Requirement: Under the lure section (where minnows, spinnerbaits/spoons, and soft curly tail grubs are discussed), you MUST expand in rich, structured detail. For each of these three specific lure types, you must describe:
   1. Its realistic underwater action (泳姿及动作)
@@ -103,6 +165,7 @@ Additional Instructions:
 Format your output strictly as a JSON object with the specified schema below.
 Ensure the text is lively, incorporates practical fishing insights, and provides helpful guidelines to keep beginners motivated. Avoid dry academic translations. Use standard fishing jargon in Chinese (e.g. 炸线, 炒米粉, 炒轮, 前导线, ML调, 纺车轮, 水滴轮).
 `;
+    }
 
     // 1. Check if user configured a custom third-party OpenAI-compatible model (e.g., Qwen, DeepSeek, etc.)
     if (aiConfig && aiConfig.provider === "custom") {
@@ -272,24 +335,36 @@ CRITICAL: You MUST respond ONLY with a raw JSON object matching the requested sc
     const parsedData = JSON.parse(responseText || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.warn("Gemini article generation failed, falling back to local design parser:", error);
-    
-    // Safely parse or default parameters from req.body (since variables in the try block are block-scoped)
-    const { outline, theme, level, tone, customPrompt } = req.body || {};
-    const basePrompt = outline || `装备入门——选对工具事半功倍
-基础装备：路亚竿（推荐直柄竿，ML或M调泛用性强）、渔轮（新手首选纺车轮，不易炸线）、钓线（PE线搭配碳素前导线，兼顾强度与隐蔽性）。
-核心消耗品：拟饵的种类与选择（硬饵如米诺、亮片，软饵如卷尾蛆等）。
-必备配件：路亚钳、控鱼器、偏光镜等。`;
+    console.error("Gemini article generation failed:", error);
 
+    // Track if the user explicitly provided an API key in the frontend settings
+    const userKeyUsed = aiConfig?.apiKey && typeof aiConfig.apiKey === "string" && aiConfig.apiKey.trim().length > 4;
+    const errorMsg = error.message || String(error);
+
+    // If they have explicitly configured their own personal API Key, always bubble up the error immediately
+    if (userKeyUsed) {
+      return res.status(400).json({
+        success: false,
+        error: errorMsg,
+        details: "检测到您当前在【模型设置】中配置了独占 API Key 或者是自定义对接，系统为您透传了真实的接口调用报错：\n\n「 " + errorMsg + " 」\n\n常见故障排查建议：\n1. 请检查您的 API 密钥是否完整正确，特别是没有误粘贴前后空格或开头多复制了字符；\n2. 请确认您在 Google AI Studio 申请的密钥是否有效。正常的 Gemini Key 通常以「 AIzaSy 」开头；\n3. 如果您是在本地运行，请确定国内网络可直接访问 Google API 地址，或者在左侧设置中切换为国内第三方中转 API（例如 SiliconFlow / OpenRouter/ 义乌等第三方服务商）；\n4. 如果暂时没有有效 Key，可以直接【清空密钥输入框】，系统将会自动优雅降级为本地大纲规则渲染引擎，保证应用流畅不中断演示！"
+      });
+    }
+
+    // Default system-level run or shared key run fallback
     const safeTheme = theme || "green";
     const safeLevel = level || "Beginner";
     const safeTone = tone || "Friendly";
     const safeCustomPrompt = customPrompt || "";
 
-    const fallback = getFallbackArticle(basePrompt, safeTheme, safeLevel, safeTone, safeCustomPrompt);
+    const fallback = getFallbackArticle(outline, safeTheme, safeLevel, safeTone, safeCustomPrompt);
     
-    // Prepend a polite notice about temporary cloud AI overload and active local fallback
-    fallback.intro = `【💡 系统提示：由于当前云端 AI 模型因突发话务量饱受高负荷压力 (503 繁忙)，系统已为您自动无缝切换至“本地智能排版渲染引擎”！我们已针对您最新输入的大纲进行深度解析与精准段落布局，继续为您提供完美预览效果。】\n\n` + fallback.intro;
+    // Check if the fallback is triggered specifically by an invalid default key
+    const isInvalidKey = errorMsg.includes("API key not valid") || errorMsg.includes("INVALID_ARGUMENT") || errorMsg.includes("API_KEY_INVALID");
+    if (isInvalidKey) {
+      fallback.intro = `【💡 实况提示：由于当前检测到系统默认公用的 API 密钥失效或不可用（暂未获取到有效的 Gemini 通道），系统已自动为您零延迟激活“本地智能排版渲染引擎”！\n\n您可以无缝继续预览全部排版格式与段落细节。如需连接云端真实大语言模型生成实时内容，欢迎在左下角“模型设置”栏内填入您个人的独占 Gemini APIKey。】\n\n` + fallback.intro;
+    } else {
+      fallback.intro = `【💡 缓冲提示：由于当前默认云端 AI 接口话务量异常庞大（429 频控限制或 503 超时），系统已自动切换至“本地智能排版渲染引擎”保障您的推文预览体验不受阻碍！】\n\n` + fallback.intro;
+    }
     
     return res.json(fallback);
   }
@@ -688,46 +763,6 @@ app.post("/api/wechat/publish", async (req, res) => {
       tokenRes = await fetch(tokenUrl);
     } catch (fetchTokenErr: any) {
       console.error("[WeChat token fetch error]", fetchTokenErr);
-      
-      const errStr = (fetchTokenErr.message || String(fetchTokenErr)).toLowerCase();
-      const isConnectionIssue = 
-        errStr.includes("fetch failed") || 
-        errStr.includes("getaddrinfo") || 
-        errStr.includes("eai_again") || 
-        errStr.includes("enotfound") || 
-        errStr.includes("timeout") ||
-        appId?.toLowerCase() === "mock" || 
-        appId?.toLowerCase() === "sandbox" || 
-        appSecret?.toLowerCase() === "mock" || 
-        appSecret?.toLowerCase() === "sandbox";
-      
-      if (isConnectionIssue) {
-        console.log(`[WeChat Simulation] Activating sandbox mock publisher fallback due to network restriction or mock credentials.`);
-        const mockedMediaId = `mock_draft_media_id_${Math.random().toString(36).substring(2, 10)}`;
-        const mockedThumbId = `mock_thumb_media_id_${Math.random().toString(36).substring(2, 10)}`;
-        
-        const onlyDraft = publishToDraft === true || publishToDraft === "true";
-        const publishingSchedule = isScheduled ? `已设于 ${scheduledTime} 自动发布` : (onlyDraft ? "仅模拟存入草稿箱" : "已模拟群发发表");
-        const collectionStatus = (addToCollection && collectionId) 
-          ? `成功关联至合集专栏 [模拟ID: ${collectionId}]` 
-          : "未添加";
-
-        const finalMsg = onlyDraft
-          ? "【💡 沙箱测试成功】由于本地开发/预览环境出口网络无法直接连接 `api.weixin.org`，系统已自动恢复为【沙箱仿真模拟发布通道】！文章已成功仿真同步到 [模拟公众号草稿箱]，真实部署后将调用真实微信官方 API 接口。"
-          : "【💡 沙箱群发成功】由于开发沙箱出口网络受限，系统已自动切换到【沙箱仿真群发通道】。同步并一键发表成功，已生成模拟微信公开访问链接！";
-
-        return res.json({
-          success: true,
-          isSimulated: true,
-          mediaId: mockedMediaId,
-          publishId: onlyDraft ? undefined : `mock_pub_id_${Math.random().toString(36).substring(2, 11)}`,
-          thumbMediaId: mockedThumbId,
-          collectionStatus,
-          publishingSchedule,
-          message: finalMsg
-        });
-      }
-
       return res.status(500).json({
         success: false,
         error: `连接微信服务器（获取 Access Token）失败，网络连接异常: ${fetchTokenErr.message || fetchTokenErr}。请检查您的服务器出站网络是否被限制，或确保 IP 白名单配置正确。`
@@ -1030,32 +1065,6 @@ app.get("/api/wechat/albums", async (req, res) => {
       tokenRes = await fetch(tokenUrl);
     } catch (fetchTokenErr: any) {
       console.error("[WeChat token fetch error (album)]", fetchTokenErr);
-      
-      const errStr = (fetchTokenErr.message || String(fetchTokenErr)).toLowerCase();
-      const isConnectionIssue = 
-        errStr.includes("fetch failed") || 
-        errStr.includes("getaddrinfo") || 
-        errStr.includes("eai_again") || 
-        errStr.includes("enotfound") || 
-        errStr.includes("timeout") ||
-        (appId as string)?.toLowerCase() === "mock" || 
-        (appId as string)?.toLowerCase() === "sandbox" || 
-        (appSecret as string)?.toLowerCase() === "mock" || 
-        (appSecret as string)?.toLowerCase() === "sandbox";
-      
-      if (isConnectionIssue) {
-        console.log(`[WeChat Simulation] Returning mock albums list due to offline / DNS connection restrictions.`);
-        return res.json({
-          success: true,
-          isSimulated: true,
-          albums: [
-            { album_id: "10001", title: "【沙箱模拟】🎣 路亚新手爆护训练营" },
-            { album_id: "10002", title: "【沙箱模拟】⚙️ 重型装备实战秘籍配齐" },
-            { album_id: "10003", title: "【沙箱模拟】🌊 绿色钓鱼放流生活指南" }
-          ]
-        });
-      }
-
       return res.status(500).json({
         success: false,
         error: `连接微信服务器（获取 Access Token）失败，网络连接异常: ${fetchTokenErr.message || fetchTokenErr}。请检查您的服务器出站网络，并确保已将您的服务 IP 添加到微信公众后台的 IP 白名单中。`

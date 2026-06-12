@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import EditorSettings from "./components/EditorSettings";
 import WeChatPreview from "./components/WeChatPreview";
 import { GenerationSettings, WeChatArticle, AIConfig } from "./types";
-import { ALL_LESSONS } from "./data/courses";
+import { ALL_LESSONS, DEFAULT_CONTENT_SYSTEM_PROMPT } from "./data/courses";
 
 export default function App() {
   const [currentLessonId, setCurrentLessonId] = useState<string>("lesson3");
@@ -16,7 +16,8 @@ export default function App() {
     layout: "classic",
     level: "Beginner",
     tone: "Friendly",
-    customPrompt: "重点练习过头抛（适合开阔水域），并加入抽停结合、跳底慢拖等手法。"
+    customPrompt: "重点练习过头抛（适合开阔水域），并加入抽停结合、跳底慢拖等手法。",
+    contentSystemPrompt: DEFAULT_CONTENT_SYSTEM_PROMPT
   });
 
   // Client-side local storage persistence for users custom model configurations (e.g. Qwen / SiliconFlow)
@@ -55,6 +56,7 @@ export default function App() {
   const [article, setArticle] = useState<WeChatArticle>(defaultLesson.article);
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<number | undefined>(undefined);
 
   const handleSelectLesson = (lessonId: string) => {
     setCurrentLessonId(lessonId);
@@ -89,12 +91,32 @@ export default function App() {
       });
 
       if (!res.ok) {
-        throw new Error(`请求服务器失败: ${res.statusText}`);
+        let errMsg = `请求服务器失败：HTTP ${res.status} ${res.statusText}`;
+        try {
+          const errData = await res.json();
+          if (errData) {
+            if (errData.details) {
+              errMsg = `${errData.error || ""}\n\n${errData.details}`;
+            } else if (errData.error) {
+              errMsg = errData.error;
+            } else if (errData.message) {
+              errMsg = errData.message;
+            }
+          }
+        } catch (_) {
+          // Fallback to text reading if response is not JSON
+          try {
+            const raw = await res.text();
+            if (raw && raw.length < 200) errMsg += `: ${raw}`;
+          } catch (_) {}
+        }
+        throw new Error(errMsg);
       }
 
       const data = await res.json();
       if (data.title && data.sections) {
         setArticle(data);
+        setGeneratedAt(Date.now());
       } else {
         throw new Error("AI 返回的数据包含未知的结构，请稍后重试");
       }
@@ -216,9 +238,9 @@ export default function App() {
           {errorText && (
             <div className="bg-red-50 border border-red-100 text-red-800 rounded-xl p-4 flex gap-2.5 items-start text-xs leading-normal">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <div>
-                <strong className="block font-bold mb-0.5">生成文章时遇到了一个问题</strong>
-                <span>{errorText}</span>
+              <div className="flex-1">
+                <strong className="block font-bold mb-1">生成文章时遇到了一个问题</strong>
+                <span className="whitespace-pre-wrap block leading-relaxed break-all">{errorText}</span>
               </div>
             </div>
           )}
@@ -239,6 +261,7 @@ export default function App() {
               onLayoutChange={(newLayout) => setSettings(p => ({ ...p, layout: newLayout }))}
               onUpdateArticle={handleUpdateArticle}
               aiConfig={aiConfig}
+              generatedAt={generatedAt}
             />
           </motion.div>
         </div>

@@ -15,6 +15,7 @@ interface WeChatPreviewProps {
   onLayoutChange?: (layout: LayoutPreset) => void;
   onUpdateArticle: (updated: WeChatArticle) => void;
   aiConfig: AIConfig;
+  generatedAt?: number;
 }
 
 export default function WeChatPreview({ 
@@ -23,7 +24,8 @@ export default function WeChatPreview({
   layoutId, 
   onLayoutChange, 
   onUpdateArticle,
-  aiConfig
+  aiConfig,
+  generatedAt
 }: WeChatPreviewProps) {
   const theme = WECHAT_THEMES[themeId];
   const [copied, setCopied] = useState(false);
@@ -32,8 +34,8 @@ export default function WeChatPreview({
   const [isGeneratingSectionId, setIsGeneratingSectionId] = useState<string | null>(null);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
 
-  // Graphic Style Selection: true = detailed SVG illustrations / false = photography images (default to photography)
-  const [useVectorGraphics, setUseVectorGraphics] = useState<boolean>(false);
+  // Graphic Style Selection: true = detailed SVG illustrations / false = photography images (default to hand-drawn illustrations)
+  const [useVectorGraphics, setUseVectorGraphics] = useState<boolean>(true);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [deletedImages, setDeletedImages] = useState<Record<string, boolean>>({});
 
@@ -75,6 +77,9 @@ export default function WeChatPreview({
 
   // Section illustration URLs - Hand-drawn vector cartoon line-art illustrations
   const [sectionIllustrations, setSectionIllustrations] = useState<Record<string, string>>({});
+
+  const [customImagePrompts, setCustomImagePrompts] = useState<Record<string, string>>({});
+  const lastArticleRef = useRef<string>("");
 
   const [quotaNotice, setQuotaNotice] = useState<string | null>(null);
 
@@ -155,6 +160,32 @@ export default function WeChatPreview({
     setPublishTitle(article.title);
     setPublishDigest(article.subtitle);
   }, [article]);
+
+  useEffect(() => {
+    const articleStr = JSON.stringify(article || {});
+    if (articleStr !== lastArticleRef.current) {
+      lastArticleRef.current = articleStr;
+      
+      const initialPrompts: Record<string, string> = {
+        cover: article.title || "极高容错泛用路亚第一套装备指南"
+      };
+
+      if (article && article.sections) {
+        article.sections.forEach(sec => {
+          // Use the actual text content of the section/segment as the default prompt instead of pre-defined stylistic tags
+          initialPrompts[sec.id] = sec.subtitle || sec.title;
+        });
+      }
+      setCustomImagePrompts(initialPrompts);
+    }
+  }, [article]);
+
+  useEffect(() => {
+    if (generatedAt) {
+      console.log("Detecting article generatedAt trigger! Regenerating all illustrations sequentially...");
+      regenerateAllArticlesImages();
+    }
+  }, [generatedAt]);
 
   useEffect(() => {
     setSelectedCover(useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl);
@@ -449,14 +480,18 @@ ${article.outro}
   };
 
   // Generate Cover via API
-  const generateCoverImage = async () => {
+  const generateCoverImage = async (customPromptOverride?: string) => {
     setIsGeneratingCover(true);
     setQuotaNotice(null);
     const isIllustration = useVectorGraphics;
     const styleParam = isIllustration ? "illustration" : "photography";
+    
+    // Choose custom prompt if provided, otherwise check state, otherwise use default
+    const userPromptText = customPromptOverride || customImagePrompts["cover"] || article.title || "极高容错泛用路亚第一套装备指南";
+
     const promptText = isIllustration
-      ? "Ultra-beautiful aesthetic ink and watercolor hand-drawn artistic illustration of a peaceful sport fisherman casting his line on a wooden dock beside a quiet lake, surrounded by gentle mountains at a misty romantic golden sunrise. Exquisite gouache and fine ink brush strokes, warm cozy atmosphere, harmonious soft natural hues, highly polished visual masterpiece, 意境唯美温润治愈手绘插画, 顶级艺术质感水彩水粉, 温暖柔和自然光晕, 顶级构图留白, 完美光影质感"
-      : "Professional scenic landscape photography of deep lake lure fishing at foggy golden sunrise sunrise reflection fly fisherman, award winning banner, ultra detailed, 钓鱼, 路亚";
+      ? (userPromptText.includes("手绘") || userPromptText.includes("插画") || userPromptText.includes("watercolor") || userPromptText.includes("illustration") ? userPromptText : `${userPromptText}, professional atmospheric hand-drawn artistic watercolor illustration, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画`)
+      : (userPromptText.includes("摄影") || userPromptText.includes("真实") || userPromptText.includes("photo") || userPromptText.includes("photography") ? userPromptText : `${userPromptText}, professional scenic landscape photography, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`);
 
     try {
       const res = await fetch("/api/generate-illustration", {
@@ -491,14 +526,17 @@ ${article.outro}
   };
 
   // Generate Section Image
-  const generateSectionImage = async (id: string, keyword: string) => {
+  const generateSectionImage = async (id: string, keyword?: string) => {
     setIsGeneratingSectionId(id);
     setQuotaNotice(null);
     const isIllustration = useVectorGraphics;
     const styleParam = isIllustration ? "illustration" : "photography";
+    
+    const userPromptText = keyword || customImagePrompts[id] || id;
+
     const promptText = isIllustration
-      ? `Professional atmospheric hand-drawn artistic watercolor illustration of fine lure tackle: ${keyword}, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 极度细腻, 比例完美`
-      : `Extreme close up photography of high performance professional lure fishing equipment: ${keyword}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`;
+      ? (userPromptText.includes("手绘") || userPromptText.includes("插画") || userPromptText.includes("watercolor") || userPromptText.includes("illustration") ? userPromptText : `Professional atmospheric hand-drawn artistic watercolor illustration of fine lure tackle: ${userPromptText}, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 极度细腻, 比例完美`)
+      : (userPromptText.includes("摄影") || userPromptText.includes("真实") || userPromptText.includes("photo") || userPromptText.includes("photography") ? userPromptText : `Extreme close up photography of high performance professional lure fishing equipment: ${userPromptText}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`);
 
     try {
       const res = await fetch("/api/generate-illustration", {
@@ -543,9 +581,11 @@ ${article.outro}
     try {
       // 1. Cover
       setIsGeneratingCover(true);
+      const coverPromptVal = customImagePrompts["cover"] || article.title || "极高容错泛用路亚第一套装备指南";
+
       const coverPromptText = isIllustration
-        ? "Ultra-beautiful aesthetic ink and watercolor hand-drawn artistic illustration of a peaceful sport fisherman casting his line on a wooden dock beside a quiet lake, surrounded by gentle mountains at a misty romantic golden sunrise. Exquisite gouache and fine ink brush strokes, warm cozy atmosphere, harmonious soft natural hues, highly polished visual masterpiece, 意境唯美温润治愈手绘插画, 顶级艺术质感水彩水粉, 温暖柔和自然光晕, 顶级构图留白, 完美光影质感"
-        : "Professional scenic landscape photography of deep lake lure fishing at foggy golden sunrise sunrise reflection fly fisherman, award winning banner, ultra detailed, 钓鱼, 路亚";
+        ? (coverPromptVal.includes("手绘") || coverPromptVal.includes("插画") || coverPromptVal.includes("watercolor") || coverPromptVal.includes("illustration") ? coverPromptVal : `${coverPromptVal}, professional atmospheric hand-drawn artistic watercolor illustration, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画`)
+        : (coverPromptVal.includes("摄影") || coverPromptVal.includes("真实") || coverPromptVal.includes("photo") || coverPromptVal.includes("photography") ? coverPromptVal : `${coverPromptVal}, professional scenic landscape photography, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`);
 
       const coverRes = await fetch("/api/generate-illustration", {
         method: "POST",
@@ -571,24 +611,15 @@ ${article.outro}
       setIsGeneratingCover(false);
 
       // 2. Sections
-      const secImagePromptMap: Record<string, string> = {
-        rod: "lure fishing spinning rod, tackle photo",
-        reel: "lure spinning reel 2000, gear photo",
-        line: "pe line with fluorocarbon leader knot, detail",
-        lures: "selection of hard lures minnows and soft grubs, flatlay",
-        accessories: "lure pliers, fish grip, polarized sunglasses set",
-        casting: "lure fisherman casting with rods overhead cast action, sports photo",
-        actions: "lure fishing retrieve action twitch splash, action gear photo"
-      };
-
       const sectionIds = article.sections.map(s => s.id);
 
       for (const id of sectionIds) {
-        const kw = secImagePromptMap[id] || id;
+        const targetSec = article.sections.find(s => s.id === id);
+        const secPromptMsg = customImagePrompts[id] || targetSec?.subtitle || targetSec?.title || id;
         setIsGeneratingSectionId(id);
         const sectionPromptText = isIllustration
-          ? `Professional atmospheric hand-drawn artistic watercolor illustration of fine lure tackle: ${kw}, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 极度细腻, 比例完美`
-          : `Extreme close up photography of high performance professional lure fishing equipment: ${kw}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`;
+          ? (secPromptMsg.includes("手绘") || secPromptMsg.includes("插画") || secPromptMsg.includes("watercolor") || secPromptMsg.includes("illustration") ? secPromptMsg : `Professional atmospheric hand-drawn artistic watercolor illustration of fine lure tackle: ${secPromptMsg}, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 极度细腻, 比例完美`)
+          : (secPromptMsg.includes("摄影") || secPromptMsg.includes("真实") || secPromptMsg.includes("photo") || secPromptMsg.includes("photography") ? secPromptMsg : `Extreme close up photography of high performance professional lure fishing equipment: ${secPromptMsg}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`);
 
         const secRes = await fetch("/api/generate-illustration", {
           method: "POST",
@@ -780,7 +811,7 @@ ${article.outro}
           
           <div className="flex justify-center gap-1.5 mb-1">
             <button
-              onClick={() => generateSectionImage(id, secImagePromptMap[id] || sec.title)}
+              onClick={() => generateSectionImage(id, customImagePrompts[id] || sec.subtitle || sec.title)}
               disabled={isGeneratingSectionId !== null}
               className="bg-white/95 hover:bg-white text-zinc-900 text-[9px] font-bold py-1 px-2 rounded-md flex items-center gap-1 transition shadow-sm"
             >
@@ -821,36 +852,39 @@ ${article.outro}
   return (
     <div className="flex flex-col h-full space-y-4">
       {/* Top action toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: theme.primaryColor }} />
-            <span className="text-sm font-semibold text-gray-700">正在应用排版方案：</span>
-            <span className="text-sm font-bold" style={{ color: theme.primaryColor }}>{theme.name}</span>
-          </div>
+      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex flex-col gap-3.5 select-none">
+        {/* Row 1: Style Scheme Settings & Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100/70 pb-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: theme.primaryColor }} />
+              <span className="text-sm font-semibold text-gray-700">正在应用排版方案：</span>
+              <span className="text-sm font-bold" style={{ color: theme.primaryColor }}>{theme.name}</span>
+            </div>
 
-          {/* Graphic style toggler with explanation */}
-          <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200">
-            <button
-              onClick={() => setUseVectorGraphics(false)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 ${!useVectorGraphics ? "bg-white text-zinc-900 shadow-xs" : "text-gray-500 hover:text-gray-800"}`}
-              title="使用精选真实路亚运动现场写真，充满户外动感！"
-            >
-              📷 真实摄影
-            </button>
-            <button
-              onClick={() => setUseVectorGraphics(true)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 ${useVectorGraphics ? "bg-white text-zinc-900 shadow-xs" : "text-gray-500 hover:text-gray-800"}`}
-              title="使用精美矢量高保真手编插画，具有极高收藏与阅读价值！"
-            >
-              🎨 手绘插画
-            </button>
+            {/* Graphic style toggler with explanation */}
+            <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200 shrink-0">
+              <button
+                onClick={() => setUseVectorGraphics(false)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${!useVectorGraphics ? "bg-white text-zinc-900 shadow-xs" : "text-gray-500 hover:text-gray-800"}`}
+                title="使用精选真实路亚运动现场写真，充满户外动感！"
+              >
+                📷 真实摄影
+              </button>
+              <button
+                onClick={() => setUseVectorGraphics(true)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${useVectorGraphics ? "bg-white text-zinc-900 shadow-xs" : "text-gray-500 hover:text-gray-800"}`}
+                title="使用精美矢量高保真手编插画，具有极高收藏与阅读价值！"
+              >
+                🎨 手绘插画
+              </button>
+            </div>
           </div>
 
           <button
             onClick={regenerateAllArticlesImages}
             disabled={isGeneratingAll}
-            className={`px-3 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${isGeneratingAll ? "animate-pulse" : ""}`}
+            className={`px-3 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 self-start sm:self-auto ${isGeneratingAll ? "animate-pulse" : ""}`}
             title={useVectorGraphics ? "一键极速批量重绘并生成所有手绘插画！" : "一键极速批量重绘并生成所有写实户外摄影！"}
           >
             <RefreshCw className={`h-3 w-3 text-emerald-600 ${isGeneratingAll ? "animate-spin" : ""}`} />
@@ -858,11 +892,12 @@ ${article.outro}
           </button>
         </div>
 
-        <div className="flex gap-2 w-full md:w-auto justify-end">
+        {/* Row 2: Copy & Sync Distribution Actions */}
+        <div className="flex flex-wrap gap-2 w-full justify-start sm:justify-end items-center">
           {/* Plaintext copy */}
           <button
             onClick={copyPlainText}
-            className="px-3.5 py-1.5 border border-gray-200 text-gray-600 hover:text-gray-800 rounded-lg text-xs font-semibold flex items-center gap-1 transition shrink-0"
+            className="px-3.5 py-1.5 border border-gray-200 text-gray-600 hover:text-gray-800 rounded-lg text-xs font-semibold flex items-center gap-1 transition shrink-0 cursor-pointer"
           >
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "已复制文本" : "复制纯文本"}
@@ -871,7 +906,7 @@ ${article.outro}
           {/* Magical rich copy for WeChat */}
           <button
             onClick={copyWeChatRichHtml}
-            className="relative px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition overflow-hidden shadow-xs shrink-0"
+            className="relative px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition overflow-hidden shadow-xs shrink-0 cursor-pointer"
             title="点击直接贴入公众号，文字排版配色能完美保留！"
           >
             {copyHtmlSuccess ? (
@@ -885,7 +920,7 @@ ${article.outro}
           {/* Interactive Official WeChat Publish */}
           <button
             onClick={() => setShowPublishModal(true)}
-            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs shrink-0"
+            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs shrink-0 cursor-pointer"
             title="填写封面、标题、原创声明、添加到合集并一键同步保存至您的微信公众号后台草稿箱！"
           >
             <Share2 className="h-3.5 w-3.5 text-white" />
