@@ -6,7 +6,31 @@ import { ThemePreset } from "../types";
  * 100% compatible with both web rendering and WeChat Official Account (MP) Editor's pasting parser.
  */
 export function getFishingVectorSvgString(id: string, color: string, secondary: string): string {
-  switch (id) {
+  const normId = (id || "").toLowerCase().trim();
+  let targetId = normId;
+
+  if (normId === "cover") {
+    targetId = "cover";
+  } else if (normId.includes("rod") || normId.includes("竿")) {
+    targetId = "rod";
+  } else if (normId.includes("reel") || normId.includes("轮") || normId.includes("wheel")) {
+    targetId = "reel";
+  } else if (normId.includes("line") || normId.includes("线") || normId.includes("knot")) {
+    targetId = "line";
+  } else if (normId.includes("lure") || normId.includes("饵") || normId.includes("bait") || normId.includes("grub")) {
+    targetId = "lures";
+  } else if (normId.includes("accessories") || normId.includes("配件") || normId.includes("钳") || normId.includes("工具")) {
+    targetId = "accessories";
+  } else if (normId.includes("casting") || normId.includes("抛") || normId.includes("投")) {
+    targetId = "casting";
+  } else if (normId.includes("action") || normId.includes("手法") || normId.includes("操") || normId.includes("操饵") || normId.includes("泳姿")) {
+    targetId = "actions";
+  } else {
+    // If it's a generic section ID that didn't match anything, we fall back to a high-quality lure/gear drawing
+    targetId = "lures";
+  }
+
+  switch (targetId) {
     case "cover":
       return `<svg viewBox="0 0 800 450" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px; user-select: none;">
           <defs>
@@ -83,8 +107,8 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
           <!-- Professional Header Text -->
           <rect x="240" y="25" width="320" height="34" rx="17" fill="white" fill-opacity="0.9" />
           <circle cx="260" cy="42" r="6" fill="${color}" />
-          <text x="278" y="47" fill="#1e293b" font-size="13" font-weight="bold" font-family="sans-serif" letter-spacing="1">
-            极客路亚 · 新手装备与实战指南
+          <text x="268" y="47" fill="#1e293b" font-size="13" font-weight="bold" font-family="sans-serif" letter-spacing="1">
+            鱼佬圈 · LEG新手装备与实战分享
           </text>
         </svg>`;
 

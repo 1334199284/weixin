@@ -10,7 +10,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // In-memory store for generated images
 const generatedImages = new Map<string, { mimeType: string; data: string }>();
@@ -129,6 +130,7 @@ app.all("/api/generate-article", async (req, res) => {
       instructions = `
 You are a top-tier Chinese WeChat Official Account content creator specializing in outdoor sports and lure fishing (路亚钓鱼).
 Your task is to expand the provided outline into a highly engaging, structured, and informative WeChat subscription article (微信公众号文章) in Chinese.
+You MUST write as the persona of "LEG", a close friend and fellow enthusiast on the road, publishing on your WeChat Official Account "鱼佬圈".
 
 Article Outline:
 ${basePrompt}
@@ -138,9 +140,12 @@ Additional Instructions:
 - Article Tone: ${tone || 'Friendly & Professional'}
 - Theme Preference: ${theme || 'Natural Green'}
 - Custom Request: ${customPrompt || 'None'}
-- CRITICAL Perspective & Tone Constraint (平等、共情与共创视角): 
-  Do NOT use any patronizing, didactic, or authoritative phrasing. Do NOT use phrases like "xx劝你" (so-and-so advises you), "听老钓手/老玩家一句劝" (listen to my advice), "让我来告诉你" (let me tell you), or "听劝". Instead, address the reader with absolute equality, mutual respect, and from their own perspective (equal peer partnership). Use collaborative and warm expressions like "我们一起交流分享" (let's share and chat together), "新手朋友常会遇到类似的疑惑" (we often face similar questions as beginners), or "作为同好的一点心得共勉" (mutual encouragement from a fellow enthusiast). 
-  Do NOT refer to this article as a "课" (lesson/class/course), "第x课", "课程". Instead, refer to it as an "经验分享", "实战心得", "入门精选" or "干货拾遗".
+- CRITICAL Perspective & Tone Constraint (平等共平阶交流，零说教，极致沉浸代入感): 
+  1. 严禁使用任何居高临下、带有说教意味或指点色彩的词汇。绝对不能出现以下或类似的高高在上词汇：【劝你】、【听劝】、【听老手/老钓手一句劝】、【听我一句话】、【少走弯路/少交学费】、【让我告诉你】、【不听吃亏】。
+  2. 语气应该是一种“共同面对、一起探索、纯粹同好共创交流”的平等同伴感。写的时候，要把读者完全拉入到这个“我们”的群体中，就好像大家是在同一个鱼塘边，吹着微风，肩并肩坐在钓箱上分享心得。
+  3. 读者一读进去，就能产生天然的共鸣，觉得是“我们在经历”、“我们当时一起探索的快乐”，而不是在上一堂大师大讲堂课程。
+  4. 绝不将文章说成是“课程”、“第一课”或者“教材”。而是以“同好经验分享”、“实战体验探讨”、“入门精选交流”或者“咱们的一点装备小结”。
+  5. 标题与正文所有的句式和措辞全部转换成“我们”、“咱们”第一人称去带入，让文章不仅有干货，更极具情绪共鸣和绝对温柔平等的交流语境。
 
 - CRITICAL HIGH-TRAFFIC & VIRAL TITLE FORMULAS (公众号爆款高流量标题规范 - 严禁傲慢、严禁命令劝说):
   For the "title" field in the response, craft a compelling title that is highly attractive but retains absolute equality and mutual exploration. Avoid preachy phrases like "劝你" or "听我一句劝". Conform to these guidelines:
@@ -161,6 +166,14 @@ Additional Instructions:
   3. Most receptive target predator specie(s)
   4. Specific step-by-step practical examples on how to rig and retrieve (组装与操饵/收线手法) for maximum strike rates.
   This must be formatted with elegant subheading bullets (like ■ or 【】) to represent WeChat post design excellence.
+
+- CRITICAL Lure Fishing Action Realism Rules (极致真实路亚核心动作规范 - 严禁夸大、必须专业严谨):
+  1. 【抛投动作规范】: 必须描述“抛投时由大臂带动小臂，最后利用手腕自然释放，让竿身充分完成回弹。拟饵会沿着稳定的抛物线飞向目标，而不是靠蛮力‘甩’出去。”真正的发力来自竿身的弹性，整个动作由身体、手臂和手腕自然连贯完成，杜绝慢拉或者猛甩蛮力。
+  2. 【侧抛落水声响】: 侧抛的落水水花应描述为“落水声音更轻，更适合惊扰较小的目标鱼”，严禁使用“毫无声息”或夸张修辞。
+  3. 【控饵魅力与停顿】: 必须使用“路亚最大的魅力，就是让拟饵‘活’起来”这类自然表达。描述抽停时，要讲明“很多鲈鱼都会选择在停顿的一瞬间发动攻击，因此停顿往往比连续收线更容易迎来咬口”，避免过多绝对化的统计口吻（如“九成以上”）。
+  4. 【跳底慢拖要领】: 描述跳底手法时，应准确写为“每次轻轻挑离底部约10厘米左右，再缓慢收紧余线，让拟饵自然回落。保持线始终略微绷紧，才能第一时间感受到轻微的咬口。”
+  5. 【扬竿刺鱼力度】: 杜绝描述为“大力扬竿”或“大力刺鱼”。必须描述为：“当感觉到明显的顿口、重量变化或主线异常移动时，应迅速扬竿刺鱼，动作干脆有力即可，不必刻意用尽全力（避免因动作猛烈导致鱼嘴被拉豁或断线爆竿）。”
+  6. 【文章正能量收尾】: 文章结尾风格必须升华为：“路亚的乐趣，从来不只是鱼获本身。每一次精准的抛投、每一次拟饵在水中的动作、每一次突然传来的咬口，都值得慢慢体会。希望今天分享的技巧，能帮助大家少走一些弯路，在下一次出钓时收获更多乐趣。如果还有想了解的内容，欢迎留言交流，我们水边见！”
 
 Format your output strictly as a JSON object with the specified schema below.
 Ensure the text is lively, incorporates practical fishing insights, and provides helpful guidelines to keep beginners motivated. Avoid dry academic translations. Use standard fishing jargon in Chinese (e.g. 炸线, 炒米粉, 炒轮, 前导线, ML调, 纺车轮, 水滴轮).
@@ -547,6 +560,17 @@ app.post("/api/generate-illustration", async (req, res) => {
     const errorMsg = error?.message || String(error);
     const isQuotaError = errorMsg.includes("quota") || errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED");
     
+    // Track if the user explicitly provided an API key in the frontend settings
+    const userKeyUsed = aiConfig?.apiKey && typeof aiConfig.apiKey === "string" && aiConfig.apiKey.trim().length > 4;
+    if (userKeyUsed) {
+      console.error("[Image Generation Error for custom-key user]:", errorMsg);
+      return res.status(400).json({ 
+        success: false, 
+        error: errorMsg,
+        details: "AI 绘画接口报错：" + errorMsg + "。检测到您配置了独享 API 密钥，系统已为您返回真实通道错误，请检查您的 API 余额或密钥有效性。"
+      });
+    }
+
     if (isQuotaError) {
       console.log(`[Image Fallback] Quota limit hit or rate-limited for model 'gemini-2.5-flash-image'. Silently falling back to high-fidelity Unsplash redirects.`);
     } else {
@@ -611,9 +635,9 @@ function getFallbackArticle(
     .filter((l) => l.length > 0);
 
   // Default initial strings if outline is dry
-  let title = "【新手避坑】新手究竟怎么挑第一套竿线轮？听老钓手一句劝，省下千元冤枉钱！";
-  let subtitle = `拒绝交学费！资深钓友手把手教你配齐路亚第一套黄金装备 (${level === "Beginner" ? "新手入门" : level === "Intermediate" ? "中级进阶" : "骨灰玩家"} · ${tone === "Friendly" ? "亲切幽默" : tone === "Professional" ? "严谨专业" : tone === "Enthusiastic" ? "饱满激情" : "轻松风趣"})`;
-  let intro = `嘿！各位钓友，我是你们的路亚老钓友。相信很多刚入坑的朋友对装备选择非常纠结。根据大家最新的反馈，今天我们特别针对全新的定制化大纲进行独家拆解，为你深度定制一套属于你的超级爆护黄金装备！`;
+  let title = "【避坑指南】选对第一套路亚假饵和竿线轮：那些我们一言难尽又真实管用的良心搭配";
+  let subtitle = `拒绝盲目堆料！咱们一同看清路亚第一套泛用装备的真实细节 (${level === "Beginner" ? "新手配置" : level === "Intermediate" ? "中级进阶" : "骨灰玩家"} · ${theme || "经典绿调"})`;
+  let intro = `大家好！刚开始接触路亚或者面对新水域时，大家难免会对竿、线、轮和假饵的层层搭配感到困惑。其实这些纠结，我们在新手阶段或开发新点位时全部经历过。今天，咱们就以最真实的同好探讨视角，把这些经典的实战细节一并拆解，不搞虚的概念，只希望咱们每次挥竿都能多一份舒坦与底气！`;
 
   // Try to find a good title from outline
   if (lines.length > 0 && lines[0].length > 5 && !lines[0].includes("：") && !lines[0].includes(":")) {
@@ -634,10 +658,10 @@ function getFallbackArticle(
       title: "01 基础装备：路亚竿（首选直柄竿，ML或M调）",
       subtitle: "新手黄金起步杆，泛用性与感知手感的完美桥梁",
       paragraphs: [
-        "直柄路亚竿其超高的抛投与出线容错率是让你不至于在第一天就崩溃退坑的底线。先能顺利把假饵扔出去，你才谈得上逗鱼 and 爆护，对吧？",
-        "在竿子硬度也就是调性选择上，推荐直接选【ML调（中偏软）】或者【M调（中等）】的单节或双节泛用竿。这个规格对拟饵克重的兼容性极强，不论是丢几克重的小亮片，还是甩十几克的小米诺，腰力上都绰绰有余。"
+        "直柄路亚竿超佳的抛投与出线容错率往往是我们在新手期能保持平稳心态的关键。优先做到顺利稳定地把假饵抛投出去，咱们才有信心和乐趣去开展后续 of 控饵与咬讯试探。",
+        "在竿子硬度也就是调性选择上，我们更推荐关注【ML调（中偏软）】或者【M调（中等）】的单节或双节泛用竿。这个规格对拟饵克重的兼容性极强，不论是丢几克重的小亮片，还是甩十几克的小米诺，整体腰力上都绰绰有余。"
       ],
-      proTips: "买竿时优先买两节插节式钓竿，便于携带。且买碳素含量在90%以上的，腰力充足，感知极其灵敏！",
+      proTips: "竿子选择时优先考虑两节插节式，这样我们日常携带或自驾都会方便很多。同时选择碳素含量在90%以上，能帮我们更好地感知水下微小的咬讯和障碍碰撞手感！",
       imagePrompt: "lure fishing casting rod"
     },
     {
@@ -645,10 +669,10 @@ function getFallbackArticle(
       title: "02 稳健运转：纺车轮（推荐2000-2500型浅线杯）",
       subtitle: "出线零阻碍，彻底告别“炒粉”炸线尴尬",
       paragraphs: [
-        "纺车轮的出线原理是螺旋状自然脱出，完全依赖假饵飞行拉扯渔线，这在物理上就彻底消存在内摩擦或失控逆转，可以说是真正的“炸线杀手”。",
-        "新手挑轮子，建议闭眼入 2000型 或 2500型 的【浅线杯】。它的重量极其迎合ML竿的重心平衡，拿在手里很轻巧，甩一整天老手 and 新手胳膊都不会酸。"
+        "纺车轮的出线原理是螺旋状自然脱出，完全依赖假饵飞行拉扯渔线，这在物理层面上能很大程度上消解主轴失控逆转，可以说是我们的“炸线避难所”。",
+        "咱们在选择轮子时，建议首选 2000型 或 2500型 的【浅线杯】。这类中轻型轮子的重心搭配和ML竿非常协调，持感轻巧，日常我们挥竿作钓一整天也不会感到手臂沉重。"
       ],
-      proTips: "每次作钓结束回家后，建议用清水冲洗主轴和轴承处，甩干水滴并点一滴润滑油，恢复丝滑齿比性能！",
+      proTips: "每次作钓结束回家后，建议用清水冲洗主轴等细部，甩干水滴并滴上一两滴齿轮油，长久保持丝滑的出线质感！",
       imagePrompt: "lure spinning reel 2000"
     },
     {
@@ -656,10 +680,10 @@ function getFallbackArticle(
       title: "03 隐形桥梁：主线（PE编织线） + 前导线（碳素线）",
       subtitle: "双线黄金搭档，兼顾拉力强度与水中完美隐蔽",
       paragraphs: [
-        "主线是连接猎物的黄金纽带。新手的主线建议直接选用四编或八编的【PE编织线（0.8号或1.0号）】。PE线没有弹性，拉力极强，而且线径细能甩得更远。",
-        "为了防磨和隐形，你必须在前端绑定一截一米左右的【碳素前导线】。碳素线耐磨防划性能绝佳，可以肆无忌惮地在枯木烂石和树桩等重组障碍里磨蹭投掷。"
+        "主线是连接咱们和水下猎物的核心纽带。在新手阶段，咱们的主线建议直接考虑选用四编或八编的【PE编织线（0.8号或1.0号）】。PE线没有弹性，拉力极强，而且线径细能甩得更远。",
+        "为了应对障碍物防划和水中隐形，建议在前端绑定一截一米左右的【碳素前导线】。碳素线耐磨防划性能绝佳，可以让我们在水底树桩或乱石堆等重障碍区域更为从容。"
       ],
-      proTips: "主线与前导线的连接推荐使用“简易FG结”或“双套结”。虽然新手在绑线时可能花费一些时间，但在搏击水中巨翘嘴或鳜鱼时，它能让你绝对避免切线跑鱼的惨剧！",
+      proTips: "主线与前导线的连接掌握好“简易FG结”或“双套结”。虽然绑定前导线在刚开始上手时可能有些考验精细度，但在遭遇磨底碎石或与极具爆发力的个体力争时，它能给到我们更安心的防切线保证！",
       imagePrompt: "braided fishing line"
     }
   ];
@@ -681,7 +705,7 @@ function getFallbackArticle(
         subtitle: `针对“${itemTitle.split(/[：:]/)[0] || itemTitle}”的高效实战经验`,
         paragraphs: [
           `在本次的最新定制内容中，我们针对【${line}】展开了深度策划。针对 ${level === "Beginner" ? "新手入门 (Beginner)" : level === "Intermediate" ? "进阶提升 (Intermediate)" : "骨灰钓手 (Expert)"} 级别钓友展开深度科普，带所有人一同规避高频踩坑雷区。`,
-          `在实际水域垂钓中，操控该部分的核心关键在于把握好力度与摆动节奏。在运用 【${tone === "Friendly" ? "亲切幽默" : tone === "Professional" ? "严谨专业" : tone === "Enthusiastic" ? "饱满激情" : "轻松风趣"}】 的表达方式来分享时，老玩家最建议的核心要素就是多看鱼情、多练手法。`
+          `在实际水域垂钓中，操控该部分的核心关键在于把握好力度与摆动节奏。在运用 【${tone === "Friendly" ? "亲切幽默" : tone === "Professional" ? "严谨专业" : tone === "Enthusiastic" ? "饱满激情" : "轻松风趣"}】 的同好视角分享时，LEG最提倡的核心要素就是多看鱼情、多练手法，咱们一起切磋共同精进！`
         ],
         proTips: `针对“${itemTitle.split(/[：:]/)[0] || itemTitle}”，我们给出的避坑指南：${customPrompt || "一定要注重对细节的理解，抛竿前多注意观察周围环境，不乱丢垃圾保护好自然生态！"}`
       });

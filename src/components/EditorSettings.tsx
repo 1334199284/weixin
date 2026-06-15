@@ -373,6 +373,13 @@ export default function EditorSettings({
                   </span>
                 </div>
 
+                <div className="p-2.5 bg-amber-50 text-amber-800 rounded-lg text-[10px] leading-relaxed border border-amber-200/60 font-sans">
+                  ⚠️ <b>关于 AI 绘画报错 (Quota Exceeded):</b><br />
+                  Google AI Studio 的<b>免费层密钥 (Free Tier)</b> 的绘图模型 (gemini-2.5-flash-image) 初始配额均为 <b>0 次/天</b>。因此，自填免费 Key 在生成图片时仍会报错。如果您需要成功生图：<br />
+                  1. 前往 Google AI Studio 为该项目开启 <b>Pay-as-you-go</b> 付费计划（费用极低，仅约 $0.03 每千次生图）；<br />
+                  2. <b>最推荐推荐 (完全免费):</b> 点击上方「自定义第三方 API」，对接 <b>SiliconFlow (硅基流动)</b>，其支持免费且画质极佳的 <code>black-forest-labs/FLUX.1-schnell</code> (注册即送白嫖额度，国内直连极速并且生图画质完美！)。
+                </div>
+
                 <div className="space-y-1">
                   <span className="text-[11px] font-bold text-gray-500">您的 Gemini 独占 API Key (可选自填)</span>
                   <div className="relative">
