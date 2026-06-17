@@ -1,5 +1,6 @@
 import { ThemeConfig, ThemePreset, WeChatArticle } from "../types";
 import { getFishingVectorSvgString } from "./vector-illustrations";
+import { API_BASE_URL } from "./config";
 
 export const WECHAT_THEMES: Record<ThemePreset, ThemeConfig> = {
   green: {
@@ -96,7 +97,7 @@ export function generateWeChatInlineHtml(
   // Helper to ensure URLs are absolute and proxied/processed correctly for WeChat editor
   const getAbsoluteImageUrl = (url?: string): string => {
     if (!url) return "";
-    const currentOrigin = origin || (typeof window !== "undefined" ? window.location.origin : "");
+    const currentOrigin = origin || API_BASE_URL;
     // If it's already an absolute URL
     if (url.startsWith("http://") || url.startsWith("https://")) {
       // If it contains our proxy pathways, return as is

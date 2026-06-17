@@ -7,6 +7,7 @@ import { generateWeChatInlineHtml, WECHAT_THEMES } from "../lib/wechat-themes";
 import { WeChatArticle, ThemePreset, LayoutPreset, AIConfig } from "../types";
 import FishingVector from "./FishingVector";
 import { motion, AnimatePresence } from "motion/react";
+import { API_BASE_URL } from "../lib/config";
 
 interface WeChatPreviewProps {
   article: WeChatArticle;
@@ -47,7 +48,7 @@ export default function WeChatPreview({
   // Safe client-side proxy helper for Unsplash images to prevent loading glitches in iframes
   const getProxiedUrl = (url: string) => {
     if (url && url.includes("images.unsplash.com")) {
-      return `/api/img-proxy?url=${encodeURIComponent(url)}`;
+      return `${API_BASE_URL}/api/img-proxy?url=${encodeURIComponent(url)}`;
     }
     return url;
   };
@@ -194,7 +195,7 @@ export default function WeChatPreview({
 
   // Load public IP
   useEffect(() => {
-    fetch("/api/server-info")
+    fetch(`${API_BASE_URL}/api/server-info`)
       .then(r => r.json())
       .then(d => setServerPublicIp(d.publicIp || "127.0.0.1"))
       .catch(() => setServerPublicIp("127.0.0.1"));
@@ -304,7 +305,7 @@ export default function WeChatPreview({
     setFetchingAlbums(true);
     setAlbumFetchError(null);
     try {
-      const url = `/api/wechat/albums?appId=${encodeURIComponent(publishAppId)}&appSecret=${encodeURIComponent(publishAppSecret)}`;
+      const url = `${API_BASE_URL}/api/wechat/albums?appId=${encodeURIComponent(publishAppId)}&appSecret=${encodeURIComponent(publishAppSecret)}`;
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`服务器通道响应异常：HTTP ${res.status}`);
@@ -388,14 +389,14 @@ export default function WeChatPreview({
         coverUrl, 
         sectionImages, 
         useVectorGraphics,
-        window.location.origin,
+        API_BASE_URL,
         coverIllustrationUrl,
         sectionIllustrations,
         deletedImages
       );
 
       try {
-        const res = await fetch("/api/wechat/publish", {
+        const res = await fetch(`${API_BASE_URL}/api/wechat/publish`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -547,7 +548,7 @@ ${article.outro}
       : (userPromptText.includes("摄影") || userPromptText.includes("真实") || userPromptText.includes("photo") || userPromptText.includes("photography") ? userPromptText : `${userPromptText}, professional scenic landscape photography, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`);
 
     try {
-      const res = await fetch("/api/generate-illustration", {
+      const res = await fetch(`${API_BASE_URL}/api/generate-illustration`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -595,7 +596,7 @@ ${article.outro}
       : (userPromptText.includes("摄影") || userPromptText.includes("真实") || userPromptText.includes("photo") || userPromptText.includes("photography") ? userPromptText : `Extreme close up photography of high performance professional lure fishing equipment: ${userPromptText}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`);
 
     try {
-      const res = await fetch("/api/generate-illustration", {
+      const res = await fetch(`${API_BASE_URL}/api/generate-illustration`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -648,7 +649,7 @@ ${article.outro}
         ? (coverPromptVal.includes("手绘") || coverPromptVal.includes("插画") || coverPromptVal.includes("watercolor") || coverPromptVal.includes("illustration") ? coverPromptVal : `${coverPromptVal}, professional atmospheric hand-drawn artistic watercolor illustration, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画`)
         : (coverPromptVal.includes("摄影") || coverPromptVal.includes("真实") || coverPromptVal.includes("photo") || coverPromptVal.includes("photography") ? coverPromptVal : `${coverPromptVal}, professional scenic landscape photography, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`);
 
-      const coverRes = await fetch("/api/generate-illustration", {
+      const coverRes = await fetch(`${API_BASE_URL}/api/generate-illustration`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -685,7 +686,7 @@ ${article.outro}
           ? (secPromptMsg.includes("手绘") || secPromptMsg.includes("插画") || secPromptMsg.includes("watercolor") || secPromptMsg.includes("illustration") ? secPromptMsg : `Professional atmospheric hand-drawn artistic watercolor illustration of fine lure tackle: ${secPromptMsg}, exquisite soft gouache texture, elegant paper brushstrokes, beautiful natural placement, soft ambient light, high artistic visual mood, 意境唯美温润手绘插画, 艺术感质感水彩水粉, 极度细腻, 比例完美`)
           : (secPromptMsg.includes("摄影") || secPromptMsg.includes("真实") || secPromptMsg.includes("photo") || secPromptMsg.includes("photography") ? secPromptMsg : `Extreme close up photography of high performance professional lure fishing equipment: ${secPromptMsg}, dramatic lighting, clean shallow depth design, 钓鱼, 路亚`);
 
-        const secRes = await fetch("/api/generate-illustration", {
+        const secRes = await fetch(`${API_BASE_URL}/api/generate-illustration`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
@@ -1652,7 +1653,7 @@ ${article.outro}
           <div 
             className="border-t border-gray-100 pt-5 pb-4"
             dangerouslySetInnerHTML={{
-              __html: `<mp-common-profile class="js_uneditable custom_select_card mp_profile_iframe" data-pluginname="mpprofile" data-id="MzUyNjgwOTEyOQ==" data-headimg="http://mmbiz.qpic.cn/mmbiz_png/Ld6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ/0?wx_fmt=png" data-nickname="鱼佬圈" data-alias="Yulaoquan" data-from="0" style="display: block; margin-bottom: 16px;"><div><div role="option" tabindex="0" aria-labelledby="js_a11y_wx_profile_nickname js_a11y_comma js_a11y_wx_profile_desc js_a11y_comma0 js_a11y_wx_profile_tips js_a11y_comma1 js_a11y_wx_profile_logo" class="appmsg_card_context wx_profile_card wx-root wx_tap_card wx_card_root common-web" data-weui-theme="light" style="font-family: -apple-system-font, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', sans-serif; display: block;"><div class="wx_profile_card_inner" style="border: 1px solid rgba(0, 0, 0, 0.08); background-color: #fafafa; border-radius: 8px; padding: 16px; box-sizing: border-box; display: block;"><div aria-hidden="true" class="wx_profile_card_bd"><div class="wx_profile weui-flex" style="display: flex !important; align-items: flex-start; gap: 14px;"><div class="wx_profile_hd" style="flex-shrink: 0; display: block;"><img src="/api/img-proxy?url=http%3A%2F%2Fmmbiz.qpic.cn%2Fmmbiz_png%2FLd6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ%2F0%3Fwx_fmt%3Dpng" alt="" class="wx_profile_avatar" style="width: 48px; height: 48px; border-radius: 4px; display: block; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.05);"></div> <div class="wx_profile_bd weui-flex weui-flex__item" style="flex: 1; min-width: 0; display: flex !important; justify-content: space-between; align-items: center;"><div class="weui-flex__item" style="flex: 1; min-width: 0; display: block;"><div class="wx_profile_nickname_wrp" style="display: flex; align-items: center; margin-bottom: 4px;"><strong id="js_a11y_wx_profile_nickname" class="wx_profile_nickname" style="font-weight: 700; font-size: 15px; color: #1a1a1a; line-height: 1.4; margin-right: 6px; display: inline-block;">鱼佬圈</strong> <span class="wx_follow_verify" style="display: inline-block; width: 14px; height: 14px; background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 1024 1024\' fill=\'%2307c160\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M426.666667 725.333333l-256-256 60.16-60.16 195.84 195.84 416.426667-416.426667 60.16 60.16z\'/%3E%3C/svg%3E'); background-size: cover; vertical-align: middle; margin-left: 2px;"></span></div> <div id="js_a11y_wx_profile_desc" class="wx_profile_desc" style="font-size: 11.5px; color: #7f7f7f; line-height: 1.5; text-align: justify; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; text-overflow: ellipsis;">加入【鱼佬圈】！跟着老路友LEG一起，用极其温和、平等的视角解锁最纯粹的户外路亚美学与实战技能。咱们不浮躁、不攀比，一竿在手，并肩在水边探索属于我们最自在舒心的垂钓生活。</div></div> <i class="weui-icon-arrow" style="display: inline-block; width: 16px; height: 16px; background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 24 24\' stroke=\'%23b2b2b2\' stroke-width=\'2.5\' fill=\'none\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpolyline points=\'9 18 15 12 9 6\'%3E%3C/polyline%3E%3C/svg%3E'); background-size: cover; margin-left: 10px; flex-shrink: 0; opacity: 0.5;"></i></div></div></div> <div id="js_a11y_wx_profile_logo" aria-hidden="true" class="wx_profile_card_ft" style="border-top: 1px solid rgba(0, 0, 0, 0.05); margin-top: 12px; padding-top: 8px; font-size: 11px; color: #b2b2b2; letter-spacing: 0.5px; text-align: left; font-weight: 500; display: block;">公众号</div></div></div> <span aria-hidden="true" id="js_a11y_comma" class="weui-a11y_ref" style="display: none;">，</span></div></mp-common-profile>`
+              __html: `<mp-common-profile class="js_uneditable custom_select_card mp_profile_iframe" data-pluginname="mpprofile" data-id="MzUyNjgwOTEyOQ==" data-headimg="http://mmbiz.qpic.cn/mmbiz_png/Ld6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ/0?wx_fmt=png" data-nickname="鱼佬圈" data-alias="Yulaoquan" data-from="0" style="display: block; margin-bottom: 16px;"><div><div role="option" tabindex="0" aria-labelledby="js_a11y_wx_profile_nickname js_a11y_comma js_a11y_wx_profile_desc js_a11y_comma0 js_a11y_wx_profile_tips js_a11y_comma1 js_a11y_wx_profile_logo" class="appmsg_card_context wx_profile_card wx-root wx_tap_card wx_card_root common-web" data-weui-theme="light" style="font-family: -apple-system-font, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', sans-serif; display: block;"><div class="wx_profile_card_inner" style="border: 1px solid rgba(0, 0, 0, 0.08); background-color: #fafafa; border-radius: 8px; padding: 16px; box-sizing: border-box; display: block;"><div aria-hidden="true" class="wx_profile_card_bd"><div class="wx_profile weui-flex" style="display: flex !important; align-items: flex-start; gap: 14px;"><div class="wx_profile_hd" style="flex-shrink: 0; display: block;"><img src="${API_BASE_URL}/api/img-proxy?url=http%3A%2F%2Fmmbiz.qpic.cn%2Fmmbiz_png%2FLd6V92O4k5RfEOH0mJ0LdbTjSVIZvmDzqkF1WSnxg7az4iaOqMKMZwjMGR44mibluNrsGqEGBlZYHtXuHIWgDhcQ%2F0%3Fwx_fmt%3Dpng" alt="" class="wx_profile_avatar" style="width: 48px; height: 48px; border-radius: 4px; display: block; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.05);"></div> <div class="wx_profile_bd weui-flex weui-flex__item" style="flex: 1; min-width: 0; display: flex !important; justify-content: space-between; align-items: center;"><div class="weui-flex__item" style="flex: 1; min-width: 0; display: block;"><div class="wx_profile_nickname_wrp" style="display: flex; align-items: center; margin-bottom: 4px;"><strong id="js_a11y_wx_profile_nickname" class="wx_profile_nickname" style="font-weight: 700; font-size: 15px; color: #1a1a1a; line-height: 1.4; margin-right: 6px; display: inline-block;">鱼佬圈</strong> <span class="wx_follow_verify" style="display: inline-block; width: 14px; height: 14px; background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 1024 1024\' fill=\'%2307c160\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M426.666667 725.333333l-256-256 60.16-60.16 195.84 195.84 416.426667-416.426667 60.16 60.16z\'/%3E%3C/svg%3E'); background-size: cover; vertical-align: middle; margin-left: 2px;"></span></div> <div id="js_a11y_wx_profile_desc" class="wx_profile_desc" style="font-size: 11.5px; color: #7f7f7f; line-height: 1.5; text-align: justify; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; text-overflow: ellipsis;">加入【鱼佬圈】！跟着老路友LEG一起，用极其温和、平等的视角解锁最纯粹的户外路亚美学与实战技能。咱们不浮躁、不攀比，一竿在手，并肩在水边探索属于我们最自在舒心的垂钓生活。</div></div> <i class="weui-icon-arrow" style="display: inline-block; width: 16px; height: 16px; background-image: url('data:image/svg+xml,%3Csvg viewBox=\'0 0 24 24\' stroke=\'%23b2b2b2\' stroke-width=\'2.5\' fill=\'none\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpolyline points=\'9 18 15 12 9 6\'%3E%3C/polyline%3E%3C/svg%3E'); background-size: cover; margin-left: 10px; flex-shrink: 0; opacity: 0.5;"></i></div></div></div> <div id="js_a11y_wx_profile_logo" aria-hidden="true" class="wx_profile_card_ft" style="border-top: 1px solid rgba(0, 0, 0, 0.05); margin-top: 12px; padding-top: 8px; font-size: 11px; color: #b2b2b2; letter-spacing: 0.5px; text-align: left; font-weight: 500; display: block;">公众号</div></div></div> <span aria-hidden="true" id="js_a11y_comma" class="weui-a11y_ref" style="display: none;">，</span></div></mp-common-profile>`
             }}
           />
 

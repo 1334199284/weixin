@@ -5,6 +5,7 @@ import EditorSettings from "./components/EditorSettings";
 import WeChatPreview from "./components/WeChatPreview";
 import { GenerationSettings, WeChatArticle, AIConfig } from "./types";
 import { ALL_LESSONS, DEFAULT_CONTENT_SYSTEM_PROMPT } from "./data/courses";
+import { API_BASE_URL } from "./lib/config";
 
 export default function App() {
   const [currentLessonId, setCurrentLessonId] = useState<string>("lesson3");
@@ -81,7 +82,7 @@ export default function App() {
     setIsGenerating(true);
     setErrorText(null);
     try {
-      const res = await fetch("/api/generate-article", {
+      const res = await fetch(`${API_BASE_URL}/api/generate-article`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
