@@ -3,6 +3,7 @@ import { getWeChatAccessToken } from "./wechat-token";
 import { getWeChatCredentials, handleFetchError } from "./utils";
 const FormData = require("form-data");
 const Jimp = require("jimp");
+const axios = require("axios");
 
 const WECHAT_API_BASE = process.env.WECHAT_API_URL || "https://api.weixin.qq.com";
 const router = express.Router();
@@ -38,21 +39,23 @@ async function uploadImageToWeChat(imgUrl: string, accessToken: string, req: exp
         console.warn("[WeChat Process Cover] Jimp failed", jimpErr);
     }
 
+    console.log(`[WeChat Upload Media] Buffer size: ${finalBuffer.length}`);
     const uploadForm = new FormData();
     uploadForm.append("media", finalBuffer, { filename: "cover.jpg", contentType: "image/jpeg" });
 
     const uploadUrl = `${WECHAT_API_BASE}/cgi-bin/media/upload?access_token=${accessToken}&type=image`;
-    const uploadRes = await fetch(uploadUrl, { 
-        method: "POST", 
-        body: uploadForm,
-        headers: uploadForm.getHeaders()
-    });
     
-    if (!uploadRes.ok) throw new Error(`上传接口异常 HTTP ${uploadRes.status}`);
-
-    const uploadData = await uploadRes.json() as any;
-    if (!uploadData.media_id) throw new Error(`微信API返回错误: ${uploadData.errmsg || JSON.stringify(uploadData)}`);
-    return uploadData.media_id;
+    try {
+        const uploadRes = await axios.post(uploadUrl, uploadForm, {
+            headers: uploadForm.getHeaders()
+        });
+        
+        const uploadData = uploadRes.data;
+        if (!uploadData.media_id) throw new Error(`微信API返回错误: ${uploadData.errmsg || JSON.stringify(uploadData)}`);
+        return uploadData.media_id;
+    } catch (err: any) {
+        throw new Error(`上传接口异常: ${err.message}`);
+    }
 }
 
 router.post("/upload-media", async (req, res) => {
