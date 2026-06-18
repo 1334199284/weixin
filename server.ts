@@ -3,7 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
-import { Jimp } from "jimp";
+import Jimp from "jimp";
 
 // Load environment variables from .env
 dotenv.config();
@@ -949,28 +949,28 @@ app.post("/api/wechat/publish", async (req, res) => {
           const jimpImage = await Jimp.read(finalBuffer);
           
           // Resize to 400px width (maintaining aspect ratio) if larger than 400px.
-          const width = jimpImage.width;
+          const width = jimpImage.bitmap.width;
           if (width > 400) {
             console.log(`[WeChat Process Cover] Resizing cover from ${width}px to 400px for WeChat thumbnail compatibility.`);
-            jimpImage.resize({ w: 400 });
+            jimpImage.resize(400, Jimp.AUTO);
           }
           
           // Set Quality to 75% for extremely good file size reduction while preserving clarity
-          (jimpImage as any).quality(75);
+          jimpImage.quality(75);
           
           // Convert to standard JPEG as WeChat requires JPEG/JPG for thumb media
-          const compressedVal = await jimpImage.getBuffer("image/jpeg");
-          finalBuffer = Buffer.from(compressedVal);
+          const compressedVal = await jimpImage.getBufferAsync(Jimp.MIME_JPEG);
+          finalBuffer = compressedVal;
           contentType = "image/jpeg";
           console.log(`[WeChat Process Cover] Successfully compressed cover image to ${(finalBuffer.length / 1024).toFixed(2)} KB.`);
 
           // If it's still > 63KB, let's resize to 300px and 60% quality
           if (finalBuffer.length > 58 * 1024) {
             console.log(`[WeChat Process Cover] Image still exceeds safe 58KB threshold (${(finalBuffer.length / 1024).toFixed(2)} KB). Compressing aggressively to 300px width, 60% quality.`);
-            jimpImage.resize({ w: 300 });
-            (jimpImage as any).quality(60);
-            const extraCompressedVal = await jimpImage.getBuffer("image/jpeg");
-            finalBuffer = Buffer.from(extraCompressedVal);
+            jimpImage.resize(300, Jimp.AUTO);
+            jimpImage.quality(60);
+            const extraCompressedVal = await jimpImage.getBufferAsync(Jimp.MIME_JPEG);
+            finalBuffer = extraCompressedVal;
             console.log(`[WeChat Process Cover] Aggressive compression result: ${(finalBuffer.length / 1024).toFixed(2)} KB.`);
           }
         } catch (jimpErr: any) {
