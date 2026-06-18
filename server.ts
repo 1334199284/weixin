@@ -27,14 +27,13 @@ function getWeChatCredentials(req: express.Request, isPost: boolean = false) {
 }
 
 // Token manager cache
-const wechatTokenCache: Record<string, { token: string; expiresAt: number }> = {};
+const wechatTokenCache: Record<string, { 
+  token: string; 
+  appSecret: string; 
+  refreshInterval?: NodeJS.Timeout 
+}> = {};
 
-async function getWeChatAccessToken(appId: string, appSecret: string): Promise<string> {
-  const cached = wechatTokenCache[appId];
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.token;
-  }
-  
+async function fetchNewTokenDirectly(appId: string, appSecret: string): Promise<string> {
   console.log(`[WeChat TokenManager] Fetching new token for ${appId}`);
   const url = `${WECHAT_API_BASE}/cgi-bin/stable_token`;
   const res = await fetch(url, {
@@ -48,13 +47,36 @@ async function getWeChatAccessToken(appId: string, appSecret: string): Promise<s
   });
   
   const data = await res.json();
-  if (data.errcode) throw new Error(`Fetch stable token failed: ${data.errmsg}`);
-  
-  // expires_in is usually 7200, buffer 5 mins
-  const expiresAt = Date.now() + (data.expires_in - 300) * 1000;
-  wechatTokenCache[appId] = { token: data.access_token, expiresAt };
+  if (data.errcode) {
+    console.error(`[WeChat TokenManager] Fetch stable token failed for ${appId}:`, data.errmsg);
+    throw new Error(`Fetch stable token failed: ${data.errmsg}`);
+  }
   
   return data.access_token;
+}
+
+async function getWeChatAccessToken(appId: string, appSecret: string): Promise<string> {
+  const cached = wechatTokenCache[appId];
+  if (cached) {
+    return cached.token;
+  }
+  
+  const token = await fetchNewTokenDirectly(appId, appSecret);
+  
+  // Set up periodic refresh every 7000 seconds
+  const refreshInterval = setInterval(async () => {
+      try {
+          const newToken = await fetchNewTokenDirectly(appId, appSecret);
+          wechatTokenCache[appId].token = newToken;
+          console.log(`[WeChat TokenManager] Succesfully refreshed token for ${appId}`);
+      } catch (err) {
+          console.error(`[WeChat TokenManager] Periodic refresh failed for ${appId}:`, err);
+      }
+  }, 7000 * 1000);
+
+  wechatTokenCache[appId] = { token, appSecret, refreshInterval };
+  
+  return token;
 }
 
 function handleFetchError(err: any, endpointName: string) {
