@@ -42,7 +42,11 @@ async function uploadImageToWeChat(imgUrl: string, accessToken: string, req: exp
     uploadForm.append("media", finalBuffer, { filename: "cover.jpg", contentType: "image/jpeg" });
 
     const uploadUrl = `${WECHAT_API_BASE}/cgi-bin/media/upload?access_token=${accessToken}&type=image`;
-    const uploadRes = await fetch(uploadUrl, { method: "POST", body: uploadForm as any });
+    const uploadRes = await fetch(uploadUrl, { 
+        method: "POST", 
+        body: uploadForm,
+        headers: uploadForm.getHeaders()
+    });
     
     if (!uploadRes.ok) throw new Error(`上传接口异常 HTTP ${uploadRes.status}`);
 

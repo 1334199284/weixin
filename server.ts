@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import cors from "cors";
 import wechatRoutes from "./server/wechat-routes";
 
@@ -26,11 +27,19 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // Prod static files - assuming dist/ exists
-    app.use(express.static(path.join(process.cwd(), 'dist')));
+    // Prod static files - ensuring dist/ and dist/index.html exist
+    const distPath = path.join(process.cwd(), 'dist');
+    if (!fs.existsSync(distPath)) {
+        fs.mkdirSync(distPath);
+    }
+    const indexPath = path.join(distPath, 'index.html');
+    if (!fs.existsSync(indexPath)) {
+        fs.writeFileSync(indexPath, '<html><body>App Initializing...</body></html>');
+    }
+    app.use(express.static(distPath));
     app.get('*', (req, res) => {
-        res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
-      });
+        res.sendFile(indexPath);
+    });
   }
   
   app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
