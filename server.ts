@@ -1004,16 +1004,12 @@ app.post("/api/wechat/publish", async (req, res) => {
         }
 
         const uploadData = (await uploadRes.json()) as any;
-        if (uploadData.thumb_media_id) {
-          thumbMediaId = uploadData.thumb_media_id;
+        if (uploadData.media_id) {
+          thumbMediaId = uploadData.media_id;
           console.log(`[WeChat publisher] Cover image uploaded successfully. Thumbnail Media ID: ${thumbMediaId}`);
         } else {
           console.error("[WeChat media upload error]", uploadData);
-          return res.status(400).json({
-            success: false,
-            error: uploadData.errmsg || "上传微信临时封面素材失败（微信API返回空 media_id）。",
-            errcode: uploadData.errcode
-          });
+          throw new Error(uploadData.errmsg || "上传微信临时封面素材失败（微信API返回空 media_id）。");
         }
       } catch (coverErr: any) {
         console.error("[WeChat cover process error]", coverErr);
@@ -1036,7 +1032,7 @@ app.post("/api/wechat/publish", async (req, res) => {
           author: author || "路亚玩家",
           digest: digest || "",
           content: contentHtml,
-          thumb_media_id: thumbMediaId || "MOCK_THUMB_MEDIA_ID_FALLBACK",
+          thumb_media_id: thumbMediaId,
           need_open_comment: 1,
           only_fans_can_comment: 0,
           is_declared_original: originalDeclaration ? 1 : 0
