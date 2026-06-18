@@ -176,6 +176,7 @@ export default function WeChatPreview({
   const [collectId, setCollectId] = useState(() => localStorage.getItem("wechat_mp_collection_id") || "");
   const [schedulePublish, setSchedulePublish] = useState(false);
   const [publishToDraft, setPublishToDraft] = useState(false);
+  const [uploadedMediaId, setUploadedMediaId] = useState<string | null>(null);
   const [schedTime, setSchedTime] = useState(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -348,7 +349,7 @@ export default function WeChatPreview({
     }
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const base64Str = event.target?.result as string;
       if (base64Str) {
         // Safe preserve uncropped original file right here as sticker
@@ -361,6 +362,29 @@ export default function WeChatPreview({
           addedAt: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
         };
         setUploadedStickers(prev => [newSticker, ...prev]);
+
+        // Upload to WeChat immediately
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/upload-media`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "x-wechat-appid": publishAppId,
+                    "x-wechat-appsecret": publishAppSecret
+                },
+                body: JSON.stringify({ imgUrl: base64Str })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                console.log("Uploaded to WeChat, media_id:", data.media_id);
+                setUploadedMediaId(data.media_id);
+            } else {
+                console.error("Failed to upload to WeChat:", data.error);
+            }
+        } catch (err) {
+            console.error("Failed to upload to WeChat:", err);
+        }
 
         setCropperSourceImage(base64Str);
         setIsCropperOpen(true);
@@ -548,6 +572,7 @@ export default function WeChatPreview({
             digest: publishDigest,
             contentHtml: formattedHtml,
             coverUrl: absoluteCoverUrl,
+            thumbMediaId: uploadedMediaId,
             originalCoverUrl: absoluteCoverUrl, // For now, passing selectedCover as original, can improve later
             croppedCoverUrl: absoluteCoverUrl, // For now, passing selectedCover as cropped, can improve later
             originalDeclaration: declareOriginal,
