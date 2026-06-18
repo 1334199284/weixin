@@ -26,6 +26,37 @@ function getWeChatCredentials(req: express.Request, isPost: boolean = false) {
   };
 }
 
+// Token manager cache
+const wechatTokenCache: Record<string, { token: string; expiresAt: number }> = {};
+
+async function getWeChatAccessToken(appId: string, appSecret: string): Promise<string> {
+  const cached = wechatTokenCache[appId];
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.token;
+  }
+  
+  console.log(`[WeChat TokenManager] Fetching new token for ${appId}`);
+  const url = `${WECHAT_API_BASE}/cgi-bin/stable_token`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+        grant_type: 'client_credential',
+        appid: appId,
+        secret: appSecret
+    })
+  });
+  
+  const data = await res.json();
+  if (data.errcode) throw new Error(`Fetch stable token failed: ${data.errmsg}`);
+  
+  // expires_in is usually 7200, buffer 5 mins
+  const expiresAt = Date.now() + (data.expires_in - 300) * 1000;
+  wechatTokenCache[appId] = { token: data.access_token, expiresAt };
+  
+  return data.access_token;
+}
+
 function handleFetchError(err: any, endpointName: string) {
   console.error(`[WeChat ${endpointName}] Fetch error:`, err);
   const errMsg = err.message || String(err);
@@ -926,38 +957,15 @@ app.post("/api/wechat/publish", async (req, res) => {
     }
 
     // Step 1: Fetch Official WeChat access_token
-    console.log(`[WeChat publisher] Connecting to WeChat API at ${WECHAT_API_BASE} for AppID: ${appId}`);
-    const tokenUrl = `${WECHAT_API_BASE}/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
-    
-    let tokenRes;
+    let accessToken: string;
     try {
-      tokenRes = await fetch(tokenUrl);
-    } catch (fetchTokenErr: any) {
-      const verboseErr = handleFetchError(fetchTokenErr, "获取 Access Token");
-      return res.status(500).json({
-        success: false,
-        error: verboseErr
-      });
+      accessToken = await getWeChatAccessToken(appId, appSecret);
+    } catch (err: any) {
+      console.error("[WeChat TokenManager error]", err);
+      return res.status(500).json({ success: false, error: err.message });
     }
     
-    if (!tokenRes.ok) {
-      return res.status(400).json({
-        success: false,
-        error: `微信 Access Token 服务响应异常 HTTP ${tokenRes.status}`
-      });
-    }
-    
-    const tokenData = (await tokenRes.json()) as any;
-    if (!tokenData.access_token) {
-      console.error("[WeChat error]", tokenData);
-      return res.status(400).json({
-        success: false,
-        error: tokenData.errmsg || "获取 WeChat access_token 失败。请检查微信后台的 AppID 与 AppSecret，并确保服务器 IP 已在 IP 白名单中（如果有配置中介代理服务，请确保中介参数无误）。",
-        errcode: tokenData.errcode
-      });
-    }
-    
-    const accessToken = tokenData.access_token;
+    console.log(`[WeChat publisher] Access token acquired for AppID: ${appId}`);
 
     // Step 2: Download cover image from URL and upload to WeChat to acquire thumb_media_id
     let thumbMediaId = "";
@@ -1177,36 +1185,15 @@ app.all("/api/wechat/albums", async (req, res) => {
     }
 
     // Step 1: Fetch Official WeChat access_token
-    console.log(`[WeChat Album] Connecting to WeChat API at ${WECHAT_API_BASE} for AppID: ${appId}`);
-    const tokenUrl = `${WECHAT_API_BASE}/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
-    
-    let tokenRes;
+    let accessToken: string;
     try {
-      tokenRes = await fetch(tokenUrl);
-    } catch (fetchTokenErr: any) {
-      const verboseErr = handleFetchError(fetchTokenErr, "获取 Access Token");
-      return res.status(500).json({
-        success: false,
-        error: verboseErr
-      });
+      accessToken = await getWeChatAccessToken(appId, appSecret);
+    } catch (err: any) {
+      console.error("[WeChat TokenManager error]", err);
+      return res.status(500).json({ success: false, error: err.message });
     }
     
-    if (!tokenRes.ok) {
-      return res.status(400).json({
-        success: false,
-        error: `微信 Access Token 服务响应异常 HTTP ${tokenRes.status}`
-      });
-    }
-    
-    const tokenData = (await tokenRes.json()) as any;
-    if (!tokenData.access_token) {
-      return res.status(400).json({
-        success: false,
-        error: tokenData.errmsg || "获取 access_token 失败。请检查微信后台的 AppID 与 AppSecret，并确保服务器 IP 已在 IP 白名单中。"
-      });
-    }
-    
-    const accessToken = tokenData.access_token;
+    console.log(`[WeChat Album] Access token acquired for AppID: ${appId}`);
     
     console.log(`[WeChat Album] Fetching album list...`);
     const albumUrl = `${WECHAT_API_BASE}/cgi-bin/album/getall?access_token=${accessToken}`;
