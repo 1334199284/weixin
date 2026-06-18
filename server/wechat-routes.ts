@@ -1,8 +1,8 @@
 import express from "express";
 import { getWeChatAccessToken } from "./wechat-token";
 import { getWeChatCredentials, handleFetchError } from "./utils";
-import FormData from "form-data";
-import Jimp from "jimp";
+const FormData = require("form-data");
+const Jimp = require("jimp");
 
 const WECHAT_API_BASE = process.env.WECHAT_API_URL || "https://api.weixin.qq.com";
 const router = express.Router();
