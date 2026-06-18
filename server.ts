@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
+import { Jimp } from "jimp";
 
 // Load environment variables from .env
 dotenv.config();
@@ -938,11 +939,49 @@ app.post("/api/wechat/publish", async (req, res) => {
           contentType = imageRes.headers.get("content-type") || "image/jpeg";
         }
 
+        let finalBuffer = Buffer.from(imageBuffer);
+
+        // Perform WeChat thumbnail compression/resizing
+        // WeChat's cgi-bin/media/upload?type=thumb requires the cover thumbnail to be ≤ 63KB (64KB max).
+        // We will use Jimp to resize and compress the image to ensure it is within safe bounds.
+        try {
+          console.log(`[WeChat Process Cover] Original cover image size: ${(finalBuffer.length / 1024).toFixed(2)} KB.`);
+          const jimpImage = await Jimp.read(finalBuffer);
+          
+          // Resize to 400px width (maintaining aspect ratio) if larger than 400px.
+          const width = jimpImage.width;
+          if (width > 400) {
+            console.log(`[WeChat Process Cover] Resizing cover from ${width}px to 400px for WeChat thumbnail compatibility.`);
+            jimpImage.resize({ w: 400 });
+          }
+          
+          // Set Quality to 75% for extremely good file size reduction while preserving clarity
+          (jimpImage as any).quality(75);
+          
+          // Convert to standard JPEG as WeChat requires JPEG/JPG for thumb media
+          const compressedVal = await jimpImage.getBuffer("image/jpeg");
+          finalBuffer = Buffer.from(compressedVal);
+          contentType = "image/jpeg";
+          console.log(`[WeChat Process Cover] Successfully compressed cover image to ${(finalBuffer.length / 1024).toFixed(2)} KB.`);
+
+          // If it's still > 63KB, let's resize to 300px and 60% quality
+          if (finalBuffer.length > 58 * 1024) {
+            console.log(`[WeChat Process Cover] Image still exceeds safe 58KB threshold (${(finalBuffer.length / 1024).toFixed(2)} KB). Compressing aggressively to 300px width, 60% quality.`);
+            jimpImage.resize({ w: 300 });
+            (jimpImage as any).quality(60);
+            const extraCompressedVal = await jimpImage.getBuffer("image/jpeg");
+            finalBuffer = Buffer.from(extraCompressedVal);
+            console.log(`[WeChat Process Cover] Aggressive compression result: ${(finalBuffer.length / 1024).toFixed(2)} KB.`);
+          }
+        } catch (jimpErr: any) {
+          console.warn(`[WeChat Process Cover] Jimp processing failed, falling back to original image buffer:`, jimpErr);
+        }
+
         let extension = "jpg";
         if (contentType.includes("png")) extension = "png";
         
         // Use native Blob and FormData for a fully compliant multipart upload
-        const imageBlob = new Blob([imageBuffer], { type: contentType });
+        const imageBlob = new Blob([finalBuffer], { type: contentType });
         const uploadForm = new FormData();
         uploadForm.append("media", imageBlob, `cover_thumbnail.${extension}`);
 
