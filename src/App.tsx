@@ -8,8 +8,8 @@ import { ALL_LESSONS, DEFAULT_CONTENT_SYSTEM_PROMPT } from "./data/courses";
 import { API_BASE_URL } from "./lib/config";
 
 export default function App() {
-  const [currentLessonId, setCurrentLessonId] = useState<string>("lesson3");
-  const defaultLesson = ALL_LESSONS.find(l => l.id === "lesson3") || ALL_LESSONS[1];
+  const [currentLessonId, setCurrentLessonId] = useState<string>("lesson4");
+  const defaultLesson = ALL_LESSONS.find(l => l.id === "lesson4") || ALL_LESSONS[0];
 
   const [settings, setSettings] = useState<GenerationSettings>({
     outline: defaultLesson.outline,
@@ -17,7 +17,7 @@ export default function App() {
     layout: "classic",
     level: "Beginner",
     tone: "Friendly",
-    customPrompt: "重点练习过头抛（适合开阔水域），并加入抽停结合、跳底慢拖等手法。",
+    customPrompt: "加入关于手绘插画配图的段落，提示大家可以用手绘图来完美排版，通俗易懂地解密这些不同路亚饵的水下风骚泳姿！",
     contentSystemPrompt: DEFAULT_CONTENT_SYSTEM_PROMPT
   });
 
@@ -66,9 +66,11 @@ export default function App() {
       setSettings(prev => ({ 
           ...prev, 
           outline: target.outline,
-          customPrompt: lessonId === "lesson3" 
-            ? "重点练习过头抛（适合开阔水域），并加入抽停结合、跳底慢拖等手法。"
-            : "加入更多避坑防炸线小窍门，提醒保护大自然。"
+          customPrompt: lessonId === "lesson4"
+            ? "加入关于手绘插画配图的段落，提示大家可以用手绘图来完美排版，通俗易懂地解密这些不同路亚饵的水下风骚泳姿！"
+            : lessonId === "lesson3" 
+              ? "重点练习过头抛（适合开阔水域），并加入抽停结合、跳底慢拖等手法。"
+              : "加入更多避坑防炸线小窍门，提醒保护大自然。"
         }));
       setArticle(target.article);
     }

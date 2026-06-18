@@ -60,6 +60,20 @@ export default function EditorSettings({
         textModel: "qwen/qwen-2.5-72b-instruct",
         imageModel: "black-forest-labs/flux-schnell"
       });
+    } else if (presetName === "xiaomi") {
+      onAiConfigChange({
+        provider: "custom",
+        baseUrl: "https://api.ai.mi.com/v1",
+        textModel: "mimo-v2.5",
+        imageModel: "xiaomi-painting-v1"
+      });
+    } else if (presetName === "nvidia") {
+      onAiConfigChange({
+        provider: "custom",
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        textModel: "meta/llama-3.3-70b-instruct",
+        imageModel: "stabilityai/stable-diffusion-xl"
+      });
     }
   };
 
@@ -301,6 +315,20 @@ export default function EditorSettings({
                     className="text-[10px] bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-100 py-0.5 px-2 rounded font-medium transition cursor-pointer"
                   >
                     OpenRouter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("xiaomi")}
+                    className="text-[10px] bg-orange-50 text-orange-850 hover:bg-orange-100 border border-orange-100 py-0.5 px-2 rounded font-medium transition cursor-pointer"
+                  >
+                    小米大模型 (MiLM)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("nvidia")}
+                    className="text-[10px] bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-100 py-0.5 px-2 rounded font-medium transition cursor-pointer"
+                  >
+                    英伟达 NIM
                   </button>
                 </div>
 

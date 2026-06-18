@@ -132,14 +132,53 @@ export function generateWeChatInlineHtml(
     }
   }
 
+  const formatText = (text?: string): string => {
+    if (!text) return "";
+    return text.replace(/\\n/g, "\n").split("\n").join("<br />");
+  };
+
+  const renderHtmlLine = (line: string, baseStyle: string, defaultIndent = "2em"): string => {
+    const trimmed = line.trim();
+    
+    // 1. Bracket match (supports 【】, [], (), （）)
+    const match = trimmed.match(/^([【\[\(（].*?[】\]\)）])(.*)$/);
+    if (match) {
+      const bracketText = match[1];
+      const remainingText = match[2];
+      const coloredBracket = `<strong style="color: ${theme.primaryColor}; font-weight: bold;">${bracketText}</strong>`;
+      const combined = `${coloredBracket}${remainingText}`;
+      const cleanStyle = baseStyle.replace(/text-indent:[^;]+;?/, "").trim() + " text-indent: 0px;";
+      return `<p style="${cleanStyle}">${combined}</p>`;
+    }
+
+    // 2. List indicators/Emojis
+    const isBulletOrSpecial = 
+      /^[-*+•◦▪▫◆◇●★☆▲▼🍀⚡🍬💡🎣]/.test(trimmed) || 
+      /^\d+[\.\、\:\s]/.test(trimmed) || 
+      /^[①②③④⑤⑥⑦⑧⑨⑩一二三四五六七八九十]+\、?/.test(trimmed) ||
+      /^[\uD800-\uDBFF][\uDC00-\uDFFF]|^[\u2600-\u27BF]|^[\u2300-\u23FF]|^[\u1F60-\u1F6F]/.test(trimmed);
+
+    if (isBulletOrSpecial) {
+      const cleanStyle = baseStyle.replace(/text-indent:[^;]+;?/, "").trim() + " text-indent: 0px;";
+      return `<p style="${cleanStyle}">${line}</p>`;
+    }
+
+    // 3. Normal pure text
+    const cleanStyle = baseStyle.replace(/text-indent:[^;]+;?/, "").trim() + ` text-indent: ${defaultIndent};`;
+    return `<p style="${cleanStyle}">${line}</p>`;
+  };
+
   let sectionsHtml = "";
   for (const [index, sec] of article.sections.entries()) {
     const paragraphsHtml = sec.paragraphs
       .map(p => {
-        if (layoutId === 'fresh_borderless' || layoutId === 'bubble_fresh') {
-          return `<p style="margin: 0px 0px 14px; line-height: 1.75; font-size: 15px; color: #2d3748; text-align: justify; text-justify: inter-ideograph; letter-spacing: 0.5px;">${p}</p>`;
-        }
-        return `<p style="margin: 0px 0px 12px; line-height: 1.6; font-size: 15px; color: #2d3748; text-align: justify; text-justify: inter-ideograph;">${p}</p>`;
+        const lines = p.replace(/\\n/g, "\n").split("\n").filter(line => line.trim().length > 0);
+        return lines.map(line => {
+          if (layoutId === 'fresh_borderless' || layoutId === 'bubble_fresh') {
+            return renderHtmlLine(line, "margin: 0px 0px 14px; line-height: 1.75; font-size: 15px; color: #2d3748; text-align: justify; text-justify: inter-ideograph; letter-spacing: 0.5px;", "2em");
+          }
+          return renderHtmlLine(line, "margin: 0px 0px 12px; line-height: 1.6; font-size: 15px; color: #2d3748; text-align: justify; text-justify: inter-ideograph;", "2em");
+        }).join("");
       })
       .join("");
 
@@ -352,9 +391,9 @@ export function generateWeChatInlineHtml(
 
       <!-- Compelling intro -->
       <section style="padding: 14px 18px; margin: 20px 0px; background-color: #f7fafc; border-radius: 8px; border: 1px dashed #cbd5e0;">
-        <p style="margin: 0px; font-size: 14.5px; color: #4a5568; line-height: 1.6; text-align: justify;">
-          ${article.intro}
-        </p>
+        ${article.intro.replace(/\\n/g, "\n").split("\n").filter(line => line.trim().length > 0).map(line => 
+          renderHtmlLine(line, "margin: 0px 0px 8px; font-size: 14.5px; color: #4a5568; line-height: 1.6; text-align: justify;", "2em")
+        ).join("")}
       </section>
 
       <!-- Sections -->
@@ -363,16 +402,16 @@ export function generateWeChatInlineHtml(
       <!-- Safety block -->
       <section style="margin: 32px 0px; padding: 16px; border: 1px solid #ffcc00; background-color: #fffdec; border-radius: 8px;">
         <strong style="color: #b7791f; font-size: 14.5px; display: block; margin-bottom: 6px;">🎣 安全倡议 & 户外礼仪</strong>
-        <p style="font-size: 13px; color: #744210; margin: 0; line-height: 1.5; text-align: justify;">
-          ${article.safetyTips}
-        </p>
+        ${article.safetyTips.replace(/\\n/g, "\n").split("\n").filter(line => line.trim().length > 0).map(line => 
+          renderHtmlLine(line, "margin: 0px 0px 6px; font-size: 13px; color: #744210; line-height: 1.5; text-align: justify;", "2em")
+        ).join("")}
       </section>
 
       <!-- Outro Section -->
       <section style="margin: 32px 0px 20px; padding: 0px 4px;">
-        <p style="margin: 0px; font-size: 14.5px; color: #2d3748; line-height: 1.6; text-align: justify; text-justify: inter-ideograph;">
-          ${article.outro}
-        </p>
+        ${article.outro.replace(/\\n/g, "\n").split("\n").filter(line => line.trim().length > 0).map(line => 
+          renderHtmlLine(line, "margin: 0px 0px 8px; font-size: 14.5px; color: #2d3748; line-height: 1.6; text-align: justify; text-justify: inter-ideograph;", "2em")
+        ).join("")}
       </section>
 
       <!-- Outro & Call to Action: WeChat Official Profile Card -->

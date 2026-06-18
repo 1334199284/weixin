@@ -11,13 +11,19 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
 
   if (normId === "cover") {
     targetId = "cover";
+  } else if (normId.includes("hard_lures_1") || normId.includes("minnow") || normId.includes("pencil") || normId.includes("米诺") || normId.includes("铅笔")) {
+    targetId = "minnow_pencil";
+  } else if (normId.includes("hard_lures_2") || normId.includes("crank") || normId.includes("vib") || normId.includes("小胖子")) {
+    targetId = "crank_vib";
+  } else if (normId.includes("soft_lures_jig") || normId.includes("jig") || normId.includes("grub") || normId.includes("铅头钩") || normId.includes("软饵")) {
+    targetId = "soft_jig";
   } else if (normId.includes("rod") || normId.includes("竿")) {
     targetId = "rod";
   } else if (normId.includes("reel") || normId.includes("轮") || normId.includes("wheel")) {
     targetId = "reel";
   } else if (normId.includes("line") || normId.includes("线") || normId.includes("knot")) {
     targetId = "line";
-  } else if (normId.includes("lure") || normId.includes("饵") || normId.includes("bait") || normId.includes("grub")) {
+  } else if (normId.includes("lure") || normId.includes("饵") || normId.includes("bait")) {
     targetId = "lures";
   } else if (normId.includes("accessories") || normId.includes("配件") || normId.includes("钳") || normId.includes("工具")) {
     targetId = "accessories";
@@ -32,7 +38,7 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
 
   switch (targetId) {
     case "cover":
-      return `<svg viewBox="0 0 800 450" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px; user-select: none;">
+      return `<svg viewBox="0 0 800 450" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px;">
           <defs>
             <linearGradient id="skyGrad_cover" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stop-color="${color}" stop-opacity="0.15" />
@@ -49,9 +55,9 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
           </defs>
 
           <!-- Background Sky -->
-          <rect width="800" height="280" fill="url(#skyGrad_cover)" />
+          <rect width="800" height="280" fill="${secondary}" style="fill: url(#skyGrad_cover);" />
           <!-- Water -->
-          <rect y="280" width="800" height="170" fill="url(#waterGrad_cover)" />
+          <rect y="280" width="800" height="170" fill="#f1f5f9" style="fill: url(#waterGrad_cover);" />
 
           <!-- Mountains in background -->
           <path d="M-50 280 L120 160 L310 280 Z" fill="#94a3b8" opacity="0.3" />
@@ -84,7 +90,7 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
             <circle cx="20" cy="15" r="2.5" fill="#e2e8f0" />
             <circle cx="2" cy="-10" r="3.5" fill="#94a3b8" />
 
-            <path d="M-40 40 C-25 15 -10 -5 20 -15 C45 -22 80 -10 90 20 C65 25 35 15 10 12 C-15 10 -30 25 -40 40 Z" fill="url(#primaryAccentGrad_cover)" />
+            <path d="M-40 40 C-25 15 -10 -5 20 -15 C45 -22 80 -10 90 20 C65 25 35 15 10 12 C-15 10 -30 25 -40 40 Z" fill="${color}" style="fill: url(#primaryAccentGrad_cover);" />
             <path d="M-35 35 C-15 12 10 8 30 15 C50 20 70 25 82 23 C70 12 40 8 20 -12" fill="#f8fafc" opacity="0.9" />
             <path d="M-40 40 L-65 30 L-55 50 L-68 62 L-40 46 Z" fill="${color}" />
             <path d="M25 10 L10 25 L32 20 Z" fill="${color}" opacity="0.8" />
@@ -269,6 +275,252 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
           </g>
         </svg>`;
 
+    case "minnow_pencil":
+      return `<svg viewBox="0 0 600 338" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px;">
+          <rect width="600" height="338" fill="${secondary}" rx="8" />
+          
+          <!-- Background grids and guides to evoke a technical sketch feel -->
+          <path d="M0 60 H600 M0 120 H600 M0 180 H600 M0 240 H600 M0 300 H600" stroke="#000000" stroke-opacity="0.02" stroke-width="1" />
+          <path d="M120 0 V338 M240 0 V338 M360 0 V338 M480 0 V338" stroke="#000000" stroke-opacity="0.02" stroke-width="1" />
+
+          <defs>
+            <linearGradient id="minnowGrad_special" x1="0%" y1="0%" x2="100%" y2="50%">
+              <stop offset="0%" stop-color="#ef4444" />
+              <stop offset="40%" stop-color="#f97316" />
+              <stop offset="100%" stop-color="#eab308" />
+            </linearGradient>
+            <linearGradient id="pencilGrad_special" x1="0%" y1="0%" x2="100%" y2="50%">
+              <stop offset="0%" stop-color="#3b82f6" />
+              <stop offset="50%" stop-color="#a855f7" />
+              <stop offset="100%" stop-color="#ec4899" />
+            </linearGradient>
+          </defs>
+
+          <!-- 1. MINNOW LURE (浮水米诺) -->
+          <g transform="translate(130, 85)">
+            <!-- Plastic diving lip -->
+            <path d="M 120 12 L 140 28 L 132 34 L 115 15 Z" fill="#ffffff" fill-opacity="0.6" stroke="#475569" stroke-width="1.2" />
+            
+            <!-- Minnow body -->
+            <path d="M -80 5 C -55 -15, 10 -22, 70 -12 C 100 -7, 120 4, 120 12 C 120 20, 95 28, 65 28 C 25 28, -35 20, -80 5 Z" fill="#f97316" style="fill: url(#minnowGrad_special);" stroke="#1e293b" stroke-width="1.8" />
+            
+            <!-- Scale details and eyes -->
+            <path d="M 0 -12 Q 10 -4, 20 -12 M 15 -10 Q 25 -2, 35 -10 M 30 -8 Q 40 0, 50 -8" stroke="#ffffff" stroke-opacity="0.4" stroke-width="1.2" fill="none" />
+            <circle cx="102" cy="4" r="7.5" fill="#facc15" stroke="#d97706" stroke-width="1" />
+            <circle cx="104" cy="4" r="4" fill="#000000" />
+            <circle cx="106" cy="2" r="1.5" fill="#ffffff" />
+            
+            <!-- Treble hooks with subtle sketch look -->
+            <g transform="translate(0, 24)" stroke="#334155" stroke-width="1.5" fill="none">
+              <line x1="0" y1="0" x2="0" y2="12" />
+              <path d="M -8 10 C -8 18, 8 18, 8 10" />
+              <path d="M -8 10 L -6 12 M 8 10 L 6 12" />
+            </g>
+            <g transform="translate(70, 22)" stroke="#334155" stroke-width="1.5" fill="none">
+              <line x1="0" y1="0" x2="0" y2="12" />
+              <path d="M -8 10 C -8 18, 8 18, 8 10" />
+              <path d="M -8 10 L -6 12 M 8 10 L 6 12" />
+            </g>
+            
+            <!-- Swim motion wave ripples-->
+            <path d="M 130 12 C 145 6, 160 18, 175 12" stroke="${color}" stroke-opacity="0.5" stroke-width="1.5" fill="none" stroke-linecap="round" />
+            <path d="M -90 5 Q -105 -5, -120 10 T -145 0" stroke="${color}" stroke-opacity="0.3" stroke-width="1" fill="none" stroke-dasharray="3 2" />
+
+            <text x="-75" y="-22" fill="#1e293b" font-size="11" font-weight="bold" font-family="sans-serif">米诺 (Minnow) · 仿生逃蹿</text>
+          </g>
+
+          <!-- 2. PENCIL LURE (水面系铅笔) -->
+          <g transform="translate(370, 210)">
+            <!-- Pencil body (sleek, no bill) -->
+            <path d="M -90 -5 C -60 -18, 15 -18, 70 -8 C 90 -4, 105 4, 105 10 C 105 16, 90 20, 65 18 C 25 15, -45 10, -90 -5 Z" fill="#a855f7" style="fill: url(#pencilGrad_special);" stroke="#1e293b" stroke-width="1.8" />
+            
+            <!-- Eyes and line-tie -->
+            <circle cx="85" cy="5" r="7" fill="#fbbf24" stroke="#d97706" stroke-width="1" />
+            <circle cx="87" cy="5" r="4" fill="#000000" />
+            <circle cx="106" cy="10" r="4" fill="none" stroke="#475569" stroke-width="1.5" />
+            
+            <!-- Treble hooks -->
+            <g transform="translate(-10, 15)" stroke="#334155" stroke-width="1.5" fill="none">
+              <line x1="0" y1="0" x2="0" y2="12" />
+              <path d="M -8 10 C -8 18, 8 18, 8 10" />
+            </g>
+            <g transform="translate(60, 14)" stroke="#334155" stroke-width="1.5" fill="none">
+              <line x1="0" y1="0" x2="0" y2="12" />
+              <path d="M -8 10 C -8 18, 8 18, 8 10" />
+            </g>
+
+            <!-- Walk the Dog "Z" shape path -->
+            <path d="M -160 30 L -120 10 L -80 30 L -40 10 L 0 30" stroke="#f59e0b" stroke-width="2.2" stroke-dasharray="5 3" stroke-linecap="round" fill="none" opacity="0.8" />
+            
+            <text x="-80" y="-24" fill="#1e293b" font-size="11" font-weight="bold" font-family="sans-serif">铅笔 (Pencil) · 水面“之”字飘逸</text>
+          </g>
+
+          <!-- Professional Legend Cover overlays -->
+          <rect x="25" y="278" width="550" height="36" rx="6" fill="#ffffff" fill-opacity="0.9" stroke="${color}" stroke-opacity="0.1" />
+          <circle cx="42" cy="296" r="4.5" fill="#ef4444" />
+          <text x="54" y="300" fill="#475569" font-size="11" font-family="sans-serif">
+            <tspan font-weight="bold" fill="#1e293b">操饵秘籍：</tspan>米诺重在“抽一停一”刺激顿口；铅笔依靠竿梢微松规律点抖，引爆水面爆水！
+          </text>
+        </svg>`;
+
+    case "crank_vib":
+      return `<svg viewBox="0 0 600 338" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px;">
+          <rect width="600" height="338" fill="${secondary}" rx="8" />
+          
+          <path d="M0 60 H600 M0 120 H600 M0 180 H600 M0 240 H600 M0 300 H600" stroke="#000000" stroke-opacity="0.02" stroke-width="1" />
+          <path d="M120 0 V338 M240 0 V338 M360 0 V338 M480 0 V338" stroke="#000000" stroke-opacity="0.02" stroke-width="1" />
+
+          <defs>
+            <linearGradient id="crankGrad_special" x1="0%" y1="0%" x2="100%" y2="55%">
+              <stop offset="0%" stop-color="#84cc16" />
+              <stop offset="50%" stop-color="#eab308" />
+              <stop offset="100%" stop-color="#ca8a04" />
+            </linearGradient>
+            <linearGradient id="vibGrad_special" x1="0%" y1="0%" x2="100%" y2="50%">
+              <stop offset="0%" stop-color="#3b82f6" />
+              <stop offset="40%" stop-color="#e0f2fe" />
+              <stop offset="100%" stop-color="#ef4444" />
+            </linearGradient>
+          </defs>
+
+          <!-- 1. CRANKBAIT (避障小胖子) -->
+          <g transform="translate(130, 95)">
+            <!-- Massive diving lip -->
+            <path d="M 68 15 L 115 50 L 98 62 L 56 22 Z" fill="#ffffff" fill-opacity="0.6" stroke="#334155" stroke-width="1.5" />
+            
+            <!-- Stubby Crank body -->
+            <path d="M -60 10 C -45 -18, 15 -25, 60 -5 C 75 5, 75 22, 60 28 C 30 35, -25 32, -60 10 Z" fill="#ca8a04" style="fill: url(#crankGrad_special);" stroke="#1e293b" stroke-width="1.8" />
+            
+            <!-- Beautiful Eyes -->
+            <circle cx="48" cy="4" r="8" fill="#ffffff" stroke="#eab308" stroke-width="1" />
+            <circle cx="50" cy="4" r="4.5" fill="#000000" />
+            <circle cx="52" cy="2" r="1.5" fill="#ffffff" />
+            
+            <!-- Front & back hooks -->
+            <g transform="translate(5, 28)" stroke="#334155" stroke-width="1.5" fill="none">
+              <line x1="0" y1="0" x2="0" y2="12" />
+              <path d="M -7 10 C -7 16, 7 16, 7 10" />
+            </g>
+            <g transform="translate(-56, 12)" stroke="#334155" stroke-width="1.5" fill="none">
+              <line x1="0" y1="0" x2="0" y2="12" />
+              <path d="M -7 10 C -7 16, 7 16, 7 10" />
+            </g>
+
+            <!-- Vibration waves -->
+            <path d="M 85 45 A 25 25 0 0 0 105 15" stroke="${color}" stroke-opacity="0.6" stroke-width="2" fill="none" />
+            <path d="M 95 55 A 35 35 0 0 0 120 15" stroke="${color}" stroke-opacity="0.3" stroke-width="1.5" fill="none" />
+            
+            <text x="-65" y="-28" fill="#1e293b" font-size="11" font-weight="bold" font-family="sans-serif">小胖子 (Crank) · 强力撞障撞石</text>
+          </g>
+
+          <!-- 2. VIB (全水层高频震颤) -->
+          <g transform="translate(370, 205)">
+            <!-- Sinking style, flat head tied from top -->
+            <path d="M -70 12 C -60 -10, -10 -22, 45 -4 C 65 3, 75 14, 55 22 C 25 30, -35 25, -70 12 Z" fill="#2563eb" style="fill: url(#vibGrad_special);" stroke="#1e293b" stroke-width="1.8" />
+            
+            <!-- Tie point on back -->
+            <circle cx="15" cy="-14" r="3.5" fill="none" stroke="#475569" stroke-width="1.8" />
+            <line x1="15" y1="-14" x2="15" y2="-40" stroke="#475569" stroke-width="1.2" stroke-dasharray="3 2" />
+
+            <!-- Large glowing fish eye -->
+            <circle cx="48" cy="8" r="7.5" fill="#ef4444" stroke="#7f1d1d" stroke-width="1" />
+            <circle cx="50" cy="8" r="4" fill="#000000" />
+            
+            <!-- Sinking ripples surrounding VIB -->
+            <path d="M 12 2 C 16 -4, 25 -4, 30 2" stroke="#fbbf24" stroke-width="1.5" fill="none" opacity="0.8" />
+            <path d="M -2 2 C 2 -6, 12 -6, 16 2" stroke="#fbbf24" stroke-width="1.5" fill="none" opacity="0.8" />
+
+            <g transform="translate(-25, 22)" stroke="#334155" stroke-width="1.5" fill="none">
+              <line x1="0" y1="0" x2="0" y2="12" />
+              <path d="M -6 10 C -6 16, 6 16, 6 10" />
+            </g>
+            <g transform="translate(35, 23)" stroke="#334155" stroke-width="1.5" fill="none">
+              <line x1="0" y1="0" x2="0" y2="12" />
+              <path d="M -6 10 C -6 16, 6 16, 6 10" />
+            </g>
+
+            <text x="-65" y="-22" fill="#1e293b" font-size="11" font-weight="bold" font-family="sans-serif">VIB (Vibration) · 全水层嗡嗡激怒</text>
+          </g>
+
+          <!-- Footer Tips -->
+          <rect x="25" y="278" width="550" height="36" rx="6" fill="#ffffff" fill-opacity="0.9" stroke="${color}" stroke-opacity="0.1" />
+          <circle cx="42" cy="296" r="4.5" fill="#f59e0b" />
+          <text x="54" y="300" fill="#475569" font-size="11" font-family="sans-serif">
+            <tspan font-weight="bold" fill="#1e293b">避障原理：</tspan>小胖子在游动时头部朝下，大勺状舌板会先触碰并弹开乱石，绝妙保护钩子不被卡死！
+          </text>
+        </svg>`;
+
+    case "soft_jig":
+      return `<svg viewBox="0 0 600 338" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px;">
+          <rect width="600" height="338" fill="${secondary}" rx="8" />
+          
+          <path d="M0 60 H600 M0 120 H600 M0 180 H600 M0 240 H600 M0 300 H600" stroke="#000000" stroke-opacity="0.02" stroke-width="1" />
+          <path d="M120 0 V338 M240 0 V338 M360 0 V338 M480 0 V338" stroke="#000000" stroke-opacity="0.02" stroke-width="1" />
+
+          <!-- Bottom muddy slope line to represent crawling on bottom -->
+          <path d="M 10 240 Q 300 230, 590 260 L 590 338 L 10 338 Z" fill="${color}" fill-opacity="0.02" />
+          <line x1="0" y1="240" x2="600" y2="240" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="4 2" />
+
+          <defs>
+            <linearGradient id="jigheadGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#94a3b8" />
+              <stop offset="100%" stop-color="#475569" />
+            </linearGradient>
+            <linearGradient id="curlyTailGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#ca8a04" />
+              <stop offset="70%" stop-color="#fbbf24" />
+              <stop offset="100%" stop-color="#fef08a" />
+            </linearGradient>
+          </defs>
+
+          <!-- Curvy Tail Soft Worm JIG Component -->
+          <g transform="translate(180, 140)">
+            <!-- Steel lead round jig head -->
+            <circle cx="-25" cy="0" r="14" fill="#475569" style="fill: url(#jigheadGrad);" stroke="#1e293b" stroke-width="1.8" />
+            <circle cx="-25" cy="-6" r="3.5" fill="#f8fafc" opacity="0.6" />
+            <!-- Line tie loop -->
+            <circle cx="-28" cy="-14" r="4.5" fill="none" stroke="#475569" stroke-width="1.8" />
+            
+            <!-- Hooks outline looping through body -->
+            <path d="M -18 0 L 32 0 M 24 0 C 24 -24, 46 -24, 46 -6" stroke="#1e293b" stroke-width="2" fill="none" stroke-linecap="round" />
+            <path d="M 46 -6 L 43 -2" stroke="#1e293b" stroke-width="2" /> <!-- Hook barb -->
+ 
+            <!-- Segmented Grub body -->
+            <path d="M -15 -10 Q -5 -11, 4 -10 L 4 10 Q -5 11, -15 10 Z" fill="#ca8a04" style="fill: url(#curlyTailGrad);" stroke="#b45309" stroke-width="1" />
+            <path d="M 4 -10 Q 12 -11, 20 -10 L 20 10 Q 12 11, 4 10 Z" fill="#ca8a04" style="fill: url(#curlyTailGrad);" stroke="#b45309" stroke-width="1" />
+            <path d="M 20 -10 Q 28 -11, 35 -10 L 35 10 Q 28 11, 20 10 Z" fill="#ca8a04" style="fill: url(#curlyTailGrad);" stroke="#b45309" stroke-width="1" />
+            <path d="M 35 -8 Q 40 -9, 45 -8 L 45 8 Q 40 9, 35 8 Z" fill="#ca8a04" style="fill: url(#curlyTailGrad);" stroke="#b45309" stroke-width="1" />
+            <path d="M 45 -6 Q 48 -7, 52 -6 L 52 6 Q 48 7, 45 6 Z" fill="#ca8a04" style="fill: url(#curlyTailGrad);" stroke="#b45309" stroke-width="1" />
+
+            <!-- Long elegant watercolor-style curly tail in motion -->
+            <path d="M 52 0 C 60 -6, 75 -15, 95 -15 C 122 -15, 142 12, 122 24 C 105 34, 82 23, 80 10 C 78 -3, 98 -6, 110 -2 C 122 2, 115 18, 105 18" stroke="#ca8a04" stroke-width="8.5" fill="none" stroke-linecap="round" />
+            <path d="M 95 10 C 100 6, 105 6, 110 10" stroke="#fef08a" stroke-width="1.8" fill="none" opacity="0.6" />
+
+            <text x="-40" y="-35" fill="#1e293b" font-size="11" font-weight="bold" font-family="sans-serif">铅头钩卷尾蛆 (Jighead with Curly Tail)</text>
+            <text x="-40" y="-20" fill="#64748b" font-size="9" font-family="sans-serif">万能百搭 / 诱鱼极高 / 练习跳底神器</text>
+          </g>
+
+          <!-- Action path - Lift and Fall trajectory -->
+          <g transform="translate(100, 180)" stroke-linecap="round">
+            <path d="M 10 60 Q 90 0, 150 40 T 320 60" stroke="#84cc16" stroke-width="2" stroke-dasharray="4 3" fill="none" opacity="0.8" />
+            
+            <circle cx="10" cy="60" r="4" fill="#84cc16" />
+            <text x="14" y="55" fill="#475569" font-size="9" font-family="sans-serif">【触底】</text>
+
+            <path d="M 90 20 L 85 10 M 90 20 L 100 15" stroke="#475569" stroke-width="1.5" />
+            <text x="96" y="8" fill="#16a34a" font-size="9" font-weight="bold" font-family="sans-serif">1. 挑竿 (Lift)</text>
+
+            <path d="M 230 45 L 238 55 M 230 45 L 222 50" stroke="#475569" stroke-width="1.5" />
+            <text x="240" y="53" fill="#b45309" font-size="9" font-weight="bold" font-family="sans-serif">2. 缓沉 (Fall & Roll)</text>
+          </g>
+
+          <rect x="25" y="278" width="550" height="36" rx="6" fill="#ffffff" fill-opacity="0.9" stroke="${color}" stroke-opacity="0.1" />
+          <circle cx="42" cy="296" r="4.5" fill="#16a34a" />
+          <text x="54" y="300" fill="#475569" font-size="11" font-family="sans-serif">
+            <tspan font-weight="bold" fill="#1e293b">跳底妙处：</tspan>缓慢慢拖、小幅挑跳，卷尾会在泥浆边缘滑行蠕动，极易挑逗深水鲶鱼/大鲈鱼！
+          </text>
+        </svg>`;
+
     case "lures":
       return `<svg viewBox="0 0 600 338" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto; display: block; border-radius: 8px;">
           <rect width="600" height="338" fill="${secondary}" rx="8" />
@@ -292,7 +544,7 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
               </linearGradient>
             </defs>
 
-            <path d="M -60 10 C -40 -15, 20 -25, 80 -15 C 110 -10, 130 5, 130 15 C 130 25, 100 35, 70 35 C 30 35, -30 25, -60 10 Z" fill="url(#minnowGrad_lures)" />
+            <path d="M -60 10 C -40 -15, 20 -25, 80 -15 C 110 -10, 130 5, 130 15 C 130 25, 100 35, 70 35 C 30 35, -30 25, -60 10 Z" fill="#ef4444" style="fill: url(#minnowGrad_lures);" />
 
             <path d="M 20 -15 Q 30 -5, 40 -15 M 30 -15 Q 40 -5, 50 -15 M 40 -15 Q 50 -5, 60 -15" stroke="#ffffff" stroke-opacity="0.3" stroke-width="1.5" fill="none" />
             <path d="M 10 5 Q 20 15, 30 5 M 20 5 Q 30 15, 40 5 M 30 5 Q 40 15, 50 5" stroke="#ffffff" stroke-opacity="0.3" stroke-width="1.5" fill="none" />
@@ -333,11 +585,11 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
             <path d="M 20 0 C 20 -20, 42 -20, 42 -5 L 42 0" stroke="#334155" stroke-width="2" fill="none" />
             <path d="M 42 -5 L 39 -1" stroke="#334155" stroke-width="2" />
 
-            <path d="M -18 -8 Q -10 -9, -2 -8 L -2 8 Q -10 9, -18 8 Z" fill="url(#grubGrad_lures)" />
-            <path d="M -2 -8 Q 5 -9, 12 -8 L 12 8 Q 5 9, -2 8 Z" fill="url(#grubGrad_lures)" />
-            <path d="M 12 -8 Q 18 -9, 24 -8 L 24 8 Q 18 9, 12 8 Z" fill="url(#grubGrad_lures)" />
-            <path d="M 24 -7 Q 28 -8, 32 -7 L 32 7 Q 28 8, 24 7 Z" fill="url(#grubGrad_lures)" />
-            <path d="M 32 -6 Q 36 -7, 40 -6 L 40 6 Q 36 7, 32 6 Z" fill="url(#grubGrad_lures)" />
+            <path d="M -18 -8 Q -10 -9, -2 -8 L -2 8 Q -10 9, -18 8 Z" fill="#ca8a04" style="fill: url(#grubGrad_lures);" />
+            <path d="M -2 -8 Q 5 -9, 12 -8 L 12 8 Q 5 9, -2 8 Z" fill="#ca8a04" style="fill: url(#grubGrad_lures);" />
+            <path d="M 12 -8 Q 18 -9, 24 -8 L 24 8 Q 18 9, 12 8 Z" fill="#ca8a04" style="fill: url(#grubGrad_lures);" />
+            <path d="M 24 -7 Q 28 -8, 32 -7 L 32 7 Q 28 8, 24 7 Z" fill="#ca8a04" style="fill: url(#grubGrad_lures);" />
+            <path d="M 32 -6 Q 36 -7, 40 -6 L 40 6 Q 36 7, 32 6 Z" fill="#ca8a04" style="fill: url(#grubGrad_lures);" />
 
             <path d="M 40 0 C 44 -4, 52 -10, 68 -10 C 88 -10, 102 12, 85 24 C 70 34, 54 26, 52 14 C 50 2, 64 -2, 75 0 C 85 2, 80 14, 72 14" stroke="#ca8a04" stroke-width="6" fill="none" stroke-linecap="round" />
             <circle cx="5" cy="2" r="1.5" fill="#facc15" />
@@ -406,8 +658,8 @@ export function getFishingVectorSvgString(id: string, color: string, secondary: 
                 <stop offset="100%" stop-color="#f59e0b" />
               </linearGradient>
             </defs>
-            <path d="M 14 30 C 14 19, 56 12, 70 24 C 74 44, 45 56, 18 50 C 14 42, 14 34, 14 30 Z" fill="url(#lensGrad)" />
-            <path d="M 146 30 C 146 19, 104 12, 90 24 C 86 44, 115 56, 142 50 C 146 42, 146 34, 146 30 Z" fill="url(#lensGrad)" />
+            <path d="M 14 30 C 14 19, 56 12, 70 24 C 74 44, 45 56, 18 50 C 14 42, 14 34, 14 30 Z" fill="#3b82f6" style="fill: url(#lensGrad);" />
+            <path d="M 146 30 C 146 19, 104 12, 90 24 C 86 44, 115 56, 142 50 C 146 42, 146 34, 146 30 Z" fill="#3b82f6" style="fill: url(#lensGrad);" />
 
             <path d="M 22 24 L 56 42" stroke="#ffffff" stroke-width="2" opacity="0.6" stroke-linecap="round" />
             <path d="M 98 24 L 132 42" stroke="#ffffff" stroke-width="2" opacity="0.6" stroke-linecap="round" />

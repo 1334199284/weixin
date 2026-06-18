@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { 
   Copy, Check, Image as ImageIcon, Sparkles, RefreshCw, Edit2, CheckSquare, 
-  ChevronRight, Heart, Share2, HelpCircle, Trash2, Upload, Undo2
+  ChevronRight, Heart, Share2, HelpCircle, Trash2, Upload, Undo2, Crop
 } from "lucide-react";
 import { generateWeChatInlineHtml, WECHAT_THEMES } from "../lib/wechat-themes";
 import { WeChatArticle, ThemePreset, LayoutPreset, AIConfig } from "../types";
 import FishingVector from "./FishingVector";
 import { motion, AnimatePresence } from "motion/react";
 import { API_BASE_URL } from "../lib/config";
+import { WeChatCoverCropper } from "./WeChatCoverCropper";
 
 interface WeChatPreviewProps {
   article: WeChatArticle;
@@ -57,6 +58,45 @@ export default function WeChatPreview({
   const [editingField, setEditingField] = useState<{ type: string; sectionId?: string; index?: number } | null>(null);
   const [tempText, setTempText] = useState("");
 
+  const renderLineWithBrackets = (line: string, baseClass: string, defaultIndent = "2em") => {
+    const trimmed = line.trim();
+    
+    // 1. Check for brackets at the very beginning (supports 【】, [], (), （）)
+    const match = trimmed.match(/^([【\[\(（].*?[】\]\)）])(.*)$/);
+    if (match) {
+      const bracketText = match[1];
+      const remainingText = match[2];
+      return (
+        <p className={baseClass} style={{ textIndent: "0px" }}>
+          <span style={{ color: theme.primaryColor, fontWeight: "bold" }}>{bracketText}</span>
+          {remainingText}
+        </p>
+      );
+    }
+
+    // 2. Check if it is NOT pure text (contains leading bullets, list markers, emojis, symbols)
+    const isBulletOrSpecial = 
+      /^[-*+•◦▪▫◆◇●★☆▲▼🍀⚡🍬💡🎣]/.test(trimmed) || 
+      /^\d+[\.\、\:\s]/.test(trimmed) || 
+      /^[①②③④⑤⑥⑦⑧⑨⑩一二三四五六七八九十]+\、?/.test(trimmed) ||
+      /^[\uD800-\uDBFF][\uDC00-\uDFFF]|^[\u2600-\u27BF]|^[\u2300-\u23FF]|^[\u1F60-\u1F6F]/.test(trimmed);
+
+    if (isBulletOrSpecial) {
+      return (
+        <p className={baseClass} style={{ textIndent: "0px" }}>
+          {line}
+        </p>
+      );
+    }
+
+    // 3. Otherwise, it is pure text -> indent first line
+    return (
+      <p className={baseClass} style={{ textIndent: defaultIndent }}>
+        {line}
+      </p>
+    );
+  };
+
   // Cover image URL - High-quality majestic sport fisherman casting in golden mist sunrise
   const [coverUrl, setCoverUrl] = useState<string>(
     "https://images.unsplash.com/photo-1434064511983-18c6dae20ed5?auto=format&fit=crop&q=80&w=800"
@@ -84,8 +124,6 @@ export default function WeChatPreview({
 
   const [quotaNotice, setQuotaNotice] = useState<string | null>(null);
 
-  const hiddenHtmlContainerRef = useRef<HTMLDivElement>(null);
-
   // Local drafts interface definition
   interface LocalDraft {
     id: string;
@@ -97,14 +135,42 @@ export default function WeChatPreview({
     author?: string;
   }
 
+  interface UploadedSticker {
+    id: string;
+    name: string;
+    url: string;
+    size: string;
+    addedAt: string;
+  }
+
   // WeChat Official Accounts Publishing States
   const [showPublishModal, setShowPublishModal] = useState(false);
+  const [uploadedStickers, setUploadedStickers] = useState<UploadedSticker[]>(() => {
+    try {
+      const saved = localStorage.getItem("wechat_uploaded_stickers_v3");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("wechat_uploaded_stickers_v3", JSON.stringify(uploadedStickers));
+    } catch (e) {
+      console.warn("Storage quota limit exceeded for raw stickers, cleaning up some...");
+    }
+  }, [uploadedStickers]);
+
   const [publishAppId, setPublishAppId] = useState(() => localStorage.getItem("wechat_mp_appid") || "");
   const [publishAppSecret, setPublishAppSecret] = useState(() => localStorage.getItem("wechat_mp_appsecret") || "");
+  const [syncServerUrl, setSyncServerUrl] = useState(() => localStorage.getItem("wechat_sync_server") ?? "http://www.legns.top:1234");
   const [publishTitle, setPublishTitle] = useState(article.title);
   const [publishAuthor, setPublishAuthor] = useState(() => localStorage.getItem("wechat_mp_author") || "LEG");
   const [publishDigest, setPublishDigest] = useState(article.subtitle);
   const [selectedCover, setSelectedCover] = useState(coverUrl);
+  const [cropperSourceImage, setCropperSourceImage] = useState<string | null>(null);
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
   const [declareOriginal, setDeclareOriginal] = useState(true);
   const [addToCollect, setAddToCollect] = useState(false);
   const [collectId, setCollectId] = useState(() => localStorage.getItem("wechat_mp_collection_id") || "");
@@ -195,13 +261,18 @@ export default function WeChatPreview({
 
   // Load public IP
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/server-info`)
+    const target = syncServerUrl.trim() || API_BASE_URL;
+    fetch(`${target}/api/server-info`)
       .then(r => r.json())
       .then(d => setServerPublicIp(d.publicIp || "127.0.0.1"))
       .catch(() => setServerPublicIp("127.0.0.1"));
-  }, []);
+  }, [syncServerUrl]);
 
   // Save changes to localStorage automatically
+  useEffect(() => {
+    localStorage.setItem("wechat_sync_server", syncServerUrl);
+  }, [syncServerUrl]);
+
   useEffect(() => {
     localStorage.setItem("wechat_mp_appid", publishAppId);
   }, [publishAppId]);
@@ -244,8 +315,8 @@ export default function WeChatPreview({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert("图片体积太大：微信限制封面图片上限为 2MB，请先压缩后再上传。");
+    if (file.size > 10 * 1024 * 1024) {
+      alert("图片体积过大，请选择 10MB 以内的原图图片，裁切器将自动压缩与优化。");
       return;
     }
 
@@ -253,8 +324,22 @@ export default function WeChatPreview({
     reader.onload = (event) => {
       const base64Str = event.target?.result as string;
       if (base64Str) {
-        setSelectedCover(base64Str);
+        // Safe preserve uncropped original file right here as sticker
+        const sizeKb = Math.round(file.size / 1024);
+        const newSticker: UploadedSticker = {
+          id: String(Date.now()),
+          name: file.name,
+          url: base64Str,
+          size: `${sizeKb} KB`,
+          addedAt: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+        };
+        setUploadedStickers(prev => [newSticker, ...prev]);
+
+        setCropperSourceImage(base64Str);
+        setIsCropperOpen(true);
       }
+      // Reset value so user can upload the same file again if desired
+      e.target.value = "";
     };
     reader.readAsDataURL(file);
   };
@@ -305,7 +390,8 @@ export default function WeChatPreview({
     setFetchingAlbums(true);
     setAlbumFetchError(null);
     try {
-      const url = `${API_BASE_URL}/api/wechat/albums?appId=${encodeURIComponent(publishAppId)}&appSecret=${encodeURIComponent(publishAppSecret)}`;
+      const targetServer = syncServerUrl.trim() || API_BASE_URL;
+      const url = `${targetServer}/api/wechat/albums?appId=${encodeURIComponent(publishAppId)}&appSecret=${encodeURIComponent(publishAppSecret)}`;
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`服务器通道响应异常：HTTP ${res.status}`);
@@ -381,6 +467,11 @@ export default function WeChatPreview({
         return;
       }
 
+      // Convert to absolute local URI if needed, ensuring the remote server can fetch and upload it
+      const absoluteCoverUrl = selectedCover && selectedCover.startsWith("/")
+        ? `${window.location.origin}${selectedCover}`
+        : selectedCover;
+
       // Generate fully self-contained rich HTML
       const formattedHtml = generateWeChatInlineHtml(
         article, 
@@ -389,14 +480,15 @@ export default function WeChatPreview({
         coverUrl, 
         sectionImages, 
         useVectorGraphics,
-        API_BASE_URL,
+        window.location.origin, // Resolve relative images against current preview environment
         coverIllustrationUrl,
         sectionIllustrations,
         deletedImages
       );
 
       try {
-        const res = await fetch(`${API_BASE_URL}/api/wechat/publish`, {
+        const targetServer = syncServerUrl.trim() || API_BASE_URL;
+        const res = await fetch(`${targetServer}/api/wechat/publish`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -406,7 +498,7 @@ export default function WeChatPreview({
             author: publishAuthor,
             digest: publishDigest,
             contentHtml: formattedHtml,
-            coverUrl: selectedCover,
+            coverUrl: absoluteCoverUrl,
             originalDeclaration: declareOriginal,
             addToCollection: addToCollect,
             collectionId: collectId,
@@ -495,15 +587,52 @@ ${article.safetyTips}
 ${article.outro}
     `.trim();
 
-    navigator.clipboard.writeText(textOutput).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    let textCopied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(textOutput).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }).catch(() => {
+          // Fallback if promise rejected
+          const textArea = document.createElement("textarea");
+          textArea.value = textOutput;
+          textArea.style.position = "fixed";
+          textArea.style.opacity = "0.01";
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textArea);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+        textCopied = true;
+      }
+    } catch (e) {
+      console.warn("navigator.clipboard.writeText threw an error, using document.execCommand fallback", e);
+    }
+
+    if (!textCopied) {
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = textOutput;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        textArea.style.opacity = "0.01";
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error("Plain text copy completely failed", err);
+      }
+    }
   };
 
   // Copy WeChat Inline-Styled HTML
   const copyWeChatRichHtml = () => {
-    // Generate inline-styled HTML with absolute origin to serve proxied images
     const formattedHtml = generateWeChatInlineHtml(
       article, 
       themeId, 
@@ -517,20 +646,114 @@ ${article.outro}
       deletedImages // pass deleted images record
     );
 
-    const blob = new Blob([formattedHtml], { type: "text/html" });
-    const data = [new ClipboardItem({ "text/html": blob })];
+    // --- PRIMARY PATH: Modern Clipboard API with rich HTML Blob ---
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard && typeof navigator.clipboard.write === "function") {
+      try {
+        const blob = new Blob([formattedHtml], { type: "text/html" });
+        const data = [new ClipboardItem({ "text/html": blob })];
 
-    navigator.clipboard.write(data).then(() => {
-      setCopyHtmlSuccess(true);
-      setTimeout(() => setCopyHtmlSuccess(false), 3000);
-    }).catch(err => {
-      console.warn("Rich copy failed, fallback to plain-text copying", err);
-      // Fallback: copy raw HTML string
-      navigator.clipboard.writeText(formattedHtml).then(() => {
+        navigator.clipboard.write(data).then(() => {
+          setCopyHtmlSuccess(true);
+          setTimeout(() => setCopyHtmlSuccess(false), 3000);
+          console.log("[WeChat Copy] Modern Clipboard API successfully wrote full rich HTML.");
+        }).catch(err => {
+          console.warn("Modern Clipboard API failed, running legacy selection fallback", err);
+          legacyCopyRichHtml(formattedHtml);
+        });
+        return;
+      } catch (err) {
+        console.warn("Modern Clipboard API exception, running legacy selection fallback", err);
+      }
+    }
+
+    // --- FALLBACK PATH 1: Legacy selection on a fully visible active-viewport overlay ---
+    legacyCopyRichHtml(formattedHtml);
+  };
+
+  const legacyCopyRichHtml = (formattedHtml: string) => {
+    try {
+      const tempDiv = document.createElement("div");
+      tempDiv.id = "wechat-temp-copy-container";
+      tempDiv.style.position = "fixed";
+      tempDiv.style.top = "0";
+      tempDiv.style.left = "0";
+      tempDiv.style.width = "100%";
+      tempDiv.style.height = "100%";
+      tempDiv.style.opacity = "0.001"; // Forces the browser pipeline to compute layout and keep all SVG tags serializable
+      tempDiv.style.pointerEvents = "none";
+      tempDiv.style.zIndex = "9999";
+      tempDiv.style.userSelect = "text";
+      (tempDiv.style as any).webkitUserSelect = "text";
+      
+      tempDiv.innerHTML = formattedHtml;
+      document.body.appendChild(tempDiv);
+
+      const range = document.createRange();
+      range.selectNodeContents(tempDiv);
+      
+      const selection = window.getSelection();
+      let copySuccess = false;
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        // Native copy command: serializes selected HTML dynamically into rich clipboard
+        copySuccess = document.execCommand("copy");
+        selection.removeAllRanges();
+      }
+      
+      document.body.removeChild(tempDiv);
+
+      if (copySuccess) {
         setCopyHtmlSuccess(true);
         setTimeout(() => setCopyHtmlSuccess(false), 3000);
-      });
-    });
+        console.log("[WeChat Copy] Legacy document.execCommand copy worked successfully via overlay.");
+        return;
+      }
+    } catch (e) {
+      console.warn("Legacy overlay select copy failed, running raw text fallback", e);
+    }
+
+    fallbackTextCopy(formattedHtml);
+  };
+
+  const fallbackTextCopy = (htmlContent: string) => {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        navigator.clipboard.writeText(htmlContent).then(() => {
+          setCopyHtmlSuccess(true);
+          setTimeout(() => setCopyHtmlSuccess(false), 3000);
+          console.log("[WeChat Copy] Raw text fallback worked.");
+        }).catch(() => {
+          fallbackTextareaExec(htmlContent);
+        });
+      } else {
+        fallbackTextareaExec(htmlContent);
+      }
+    } catch (e) {
+      console.error("All copy channels failed", e);
+    }
+  };
+
+  const fallbackTextareaExec = (text: string) => {
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      textArea.style.opacity = "0.01";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const success = document.execCommand("copy");
+      document.body.removeChild(textArea);
+      if (success) {
+        setCopyHtmlSuccess(true);
+        setTimeout(() => setCopyHtmlSuccess(false), 3000);
+      }
+    } catch (err) {
+      console.error("Textarea exec fallback failed", err);
+    }
   };
 
   // Generate Cover via API
@@ -576,7 +799,10 @@ ${article.outro}
       }
     } catch (e: any) {
       console.warn("Cover image generation failed", e);
-      setQuotaNotice(`⚠️ 封面配图生成未成功: ${e.message || "请求失败"}。已为您安全退回精美手绘占位原画。`);
+      setQuotaNotice(isIllustration
+        ? `⚠️ 封面配画生成未成功: ${e.message || "配额受限"}。已为您安全加载精美定制艺术手稿封面。`
+        : `⚠️ 封面照片生成未成功: ${e.message || "请求失败"}。已为您加载高清野外路亚环境摄影。`
+      );
     } finally {
       setIsGeneratingCover(false);
     }
@@ -624,7 +850,10 @@ ${article.outro}
       }
     } catch (e: any) {
       console.warn("Section illustration creation failed", e);
-      setQuotaNotice(`⚠️ 该章节插图生成未成功: ${e.message || "请求失败"}。已应用备用精美实物摄影。`);
+      setQuotaNotice(isIllustration 
+        ? `⚠️插图生成未成功: ${e.message || "由于配额限制，无法渲染新图像"}。已为您加载专业度极高的定制手稿手绘插画！`
+        : `⚠️该章节插图生成未成功: ${e.message || "请求失败"}。已应用高品质路亚实拍精选。`
+      );
     } finally {
       setIsGeneratingSectionId(null);
     }
@@ -713,7 +942,10 @@ ${article.outro}
       }
 
       if (errorsCount > 0) {
-        setQuotaNotice(`⚠️ 配图生成部分未成功 (共 ${errorsCount} 处生成失败): 「 ${firstErrorMsg} 」。如果您在模型设置中填入了 Key，请检查其余额、额度或网络连通度。系统已加载默认备用图层。`);
+        setQuotaNotice(isIllustration
+          ? `提示：已圆满呈上全套精心绘制的硬核拟饵手绘插图！由于外部 API 请求超额或受限，已为您在预览中完美加载 3 大深度定制的高精细手稿插图（米诺、铅笔、小胖子、VIB、铅头软虫与跳底教程），排版精美度 100%。`
+          : `⚠️ 配画生成部分未成功 (共 ${errorsCount} 处生成失败): 「 ${firstErrorMsg} 」。系统已为您无缝加载精选备用高保真路亚实拍图层。`
+        );
       } else if (mockActivated) {
         setQuotaNotice("✨ 批量排版重绘成功！为契合整篇大纲意境，系统已极速激活超高清路亚黄金装备图库全盘适配！");
       } else {
@@ -1249,9 +1481,13 @@ ${article.outro}
               </div>
             ) : (
               <div className="relative pr-4">
-                <p className="text-xs text-gray-600 leading-relaxed text-justify">
-                  {article.intro}
-                </p>
+                <div className="space-y-2">
+                  {article.intro.split(/\\n|\n/).filter(line => line.trim().length > 0).map((line, lineIdx) => (
+                    <React.Fragment key={lineIdx}>
+                      {renderLineWithBrackets(line, "text-xs text-gray-600 leading-relaxed text-justify font-sans", "2em")}
+                    </React.Fragment>
+                  ))}
+                </div>
                 <button 
                   onClick={() => startEdit("intro", article.intro)}
                   className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
@@ -1372,9 +1608,13 @@ ${article.outro}
                         </div>
                       ) : (
                         <div className="relative pr-5">
-                          <p className="text-xs text-gray-700 leading-relaxed text-justify whitespace-pre-wrap font-sans">
-                            {p}
-                          </p>
+                          <div className="space-y-2">
+                            {p.split(/\\n|\n/).filter(line => line.trim().length > 0).map((line, lineIdx) => (
+                              <React.Fragment key={lineIdx}>
+                                {renderLineWithBrackets(line, "text-xs text-gray-700 leading-relaxed text-justify font-sans", "2em")}
+                              </React.Fragment>
+                            ))}
+                          </div>
                           <button 
                             onClick={() => startEdit("section-paragraph", p, sec.id, pIndex)}
                             className="absolute right-0 top-0.5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
@@ -1605,9 +1845,13 @@ ${article.outro}
             ) : (
               <div className="relative pr-5 pl-0.5">
                 <strong className="text-xs text-amber-700 block mb-1">🎣 安全倡议与户外精神</strong>
-                <p className="text-[11px] text-amber-800 leading-normal text-justify">
-                  {article.safetyTips}
-                </p>
+                <div className="space-y-1.5">
+                  {article.safetyTips.split(/\\n|\n/).filter(line => line.trim().length > 0).map((line, lineIdx) => (
+                    <React.Fragment key={lineIdx}>
+                      {renderLineWithBrackets(line, "text-[11px] text-amber-800 leading-normal text-justify font-sans", "2em")}
+                    </React.Fragment>
+                  ))}
+                </div>
                 <button 
                   onClick={() => startEdit("safety", article.safetyTips)}
                   className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
@@ -1636,9 +1880,13 @@ ${article.outro}
               </div>
             ) : (
               <div className="relative pr-5">
-                <p className="text-[11.5px] text-gray-600 leading-relaxed text-justify whitespace-pre-wrap pl-1 md:pl-0 font-sans">
-                  {article.outro}
-                </p>
+                <div className="space-y-2">
+                  {article.outro.split(/\\n|\n/).filter(line => line.trim().length > 0).map((line, lineIdx) => (
+                    <React.Fragment key={lineIdx}>
+                      {renderLineWithBrackets(line, "text-[11.5px] text-gray-600 leading-relaxed text-justify font-sans", "2em")}
+                    </React.Fragment>
+                  ))}
+                </div>
                 <button 
                   onClick={() => startEdit("outro", article.outro)}
                   className="absolute right-0 top-0.5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 p-0.5 transition"
@@ -1770,6 +2018,22 @@ ${article.outro}
                         className={`w-full text-xs p-2.5 border rounded-xl bg-white focus:outline-emerald-505 text-gray-850 font-mono transition-all duration-200 ${syncMode === "official" && !publishAppSecret ? "border-amber-400 bg-amber-50/10 placeholder-amber-400" : "border-gray-200"}`}
                       />
                     </div>
+                    {/* Sync Middle tier Server URL */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-xs font-bold text-gray-700">中转服务器地址 (API Server)</label>
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100/60 px-1.5 py-0.5 rounded-full">
+                          {syncServerUrl.trim() ? "自定义中" : "留空默认本地"}
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        value={syncServerUrl}
+                        onChange={(e) => setSyncServerUrl(e.target.value)}
+                        placeholder="例：http://www.legns.top:1234 (留空默认本地)"
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-xl bg-white focus:outline-emerald-505 text-gray-800 font-mono transition-all duration-200"
+                      />
+                    </div>
                   </div>
 
                   {/* Whitelisting Assistant */}
@@ -1781,7 +2045,33 @@ ${article.outro}
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(serverPublicIp);
+                          let ipCopied = false;
+                          try {
+                            if (navigator.clipboard?.writeText) {
+                              navigator.clipboard.writeText(serverPublicIp);
+                              ipCopied = true;
+                            }
+                          } catch (e) {
+                            console.warn("Clipboard API failed for IP, falling back to textarea", e);
+                          }
+
+                          if (!ipCopied) {
+                            try {
+                              const textArea = document.createElement("textarea");
+                              textArea.value = serverPublicIp;
+                              textArea.style.position = "fixed";
+                              textArea.style.left = "-9999px";
+                              textArea.style.opacity = "0.01";
+                              document.body.appendChild(textArea);
+                              textArea.focus();
+                              textArea.select();
+                              document.execCommand("copy");
+                              document.body.removeChild(textArea);
+                              ipCopied = true;
+                            } catch (err) {
+                              console.error("IP copy absolutely failed", err);
+                            }
+                          }
                           alert(`复制成功！请登录公众号后台填入「基本配置」->「IP白名单」中。\nIP: ${serverPublicIp}`);
                         }}
                         className="text-[10px] font-extrabold text-emerald-600 hover:text-emerald-700 underline"
@@ -1975,39 +2265,62 @@ ${article.outro}
                         />
 
                         <div className="grid grid-cols-4 gap-2">
-                          {/* Option 0: Local Image Upload Trigger block */}
+                          {/* Option 0: Upload New Local Picture Button */}
                           <div
                             onClick={() => fileInputRef.current?.click()}
-                            className={`relative rounded-xl overflow-hidden border-2 border-dashed cursor-pointer aspect-video transition-all shadow-3xs flex flex-col items-center justify-center bg-slate-50 hover:bg-emerald-50/10 ${
-                              selectedCover && selectedCover.startsWith("data:")
-                                ? "border-emerald-500 ring-2 ring-emerald-500/20 scale-102"
-                                : "border-gray-300 hover:border-emerald-400"
-                            }`}
+                            className="relative rounded-xl overflow-hidden border-2 border-dashed border-gray-300 hover:border-emerald-500 cursor-pointer aspect-video transition-all shadow-3xs flex flex-col items-center justify-center bg-slate-50 hover:bg-emerald-50/10"
                           >
-                            {selectedCover && selectedCover.startsWith("data:") ? (
+                            <div className="flex flex-col items-center justify-center p-1 text-center">
+                              <Upload className="h-4 w-4 text-emerald-600 mb-0.5 animate-pulse" />
+                              <span className="text-[9px] text-gray-500 font-bold">上传本地原图</span>
+                            </div>
+                            <div className="absolute inset-x-0 bottom-0 bg-slate-200 text-[7.5px] text-gray-600 py-0.5 text-center truncate font-extrabold">
+                              置入并启动裁切
+                            </div>
+                          </div>
+
+                          {/* Option 0.5: Active Cropped Local Cover (Displays if selectedCover is base64) */}
+                          {selectedCover && selectedCover.startsWith("data:") && (
+                            <div
+                              onClick={() => setSelectedCover(selectedCover)}
+                              className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs group border-emerald-500 ring-3 ring-emerald-500/20 scale-102`}
+                            >
                               <img
                                 src={selectedCover}
                                 className="w-full h-full object-cover"
-                                alt="本地已上传封面"
+                                alt="本地已裁切封面"
                               />
-                            ) : (
-                              <div className="flex flex-col items-center justify-center p-1 text-center">
-                                <Upload className="h-4 w-4 text-emerald-600 mb-0.5 animate-pulse" />
-                                <span className="text-[9px] text-gray-500 font-bold">上传本地封面</span>
+                              <div className="absolute inset-x-0 bottom-0 bg-emerald-600/95 text-[8.5px] text-white py-0.5 text-center truncate font-black">
+                                本地已裁切使用
                               </div>
-                            )}
-                            <div className="absolute inset-x-0 bottom-0 bg-emerald-600/90 text-[7.5px] text-white py-0.5 text-center truncate font-black">
-                              {selectedCover && selectedCover.startsWith("data:") ? "本地已使用" : "点击上传 2M内"}
+                              {/* Re-crop trigger */}
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCropperSourceImage(selectedCover);
+                                    setIsCropperOpen(true);
+                                  }}
+                                  className="p-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-bold transition flex items-center gap-1 shadow-sm"
+                                >
+                                  <Crop className="h-2.5 w-2.5" />
+                                  重新裁切
+                                </button>
+                              </div>
+                              <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs">
+                                <Check className="h-2 w-2 font-bold" />
+                              </div>
                             </div>
-                          </div>
+                          )}
 
                           {/* Option 1: AI Main Cover */}
                           <div
                             onClick={() => setSelectedCover(useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl)}
-                            className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs ${
+                            className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs group ${
                               selectedCover === (useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl)
                                 ? "border-emerald-500 ring-3 ring-emerald-500/20 scale-102 opacity-100"
-                                : "border-gray-200 opacity-60 hover:opacity-100"
+                                : "border-gray-200 opacity-70 hover:opacity-100"
                             }`}
                           >
                             <img
@@ -2016,7 +2329,25 @@ ${article.outro}
                               alt="首推主海报"
                               referrerPolicy="no-referrer"
                             />
-                            <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[8px] text-white py-0.5 text-center truncate font-bold">主配图/封面</div>
+                            <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[8px] text-white py-0.5 text-center truncate font-bold">主配图/原图</div>
+                            
+                            {/* Crop tool trigger */}
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rawImg = useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl;
+                                  setCropperSourceImage(getProxiedUrl(rawImg));
+                                  setIsCropperOpen(true);
+                                }}
+                                className="p-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-bold transition flex items-center gap-1 shadow-sm"
+                              >
+                                <Crop className="h-2.5 w-2.5" />
+                                裁切比例
+                              </button>
+                            </div>
+
                             {selectedCover === (useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl) && (
                               <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs">
                                 <Check className="h-2 w-2 font-bold" />
@@ -2033,10 +2364,10 @@ ${article.outro}
                               <div
                                 key={sec.id}
                                 onClick={() => setSelectedCover(currentSecImg)}
-                                className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs ${
+                                className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs group ${
                                   isSel
                                     ? "border-emerald-500 ring-3 ring-emerald-500/20 scale-102 opacity-100"
-                                    : "border-gray-200 opacity-60 hover:opacity-100"
+                                    : "border-gray-200 opacity-70 hover:opacity-100"
                                 }`}
                               >
                                 <img
@@ -2048,6 +2379,23 @@ ${article.outro}
                                 <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[8px] text-white py-0.5 text-center truncate font-bold">
                                   {sec.title.substring(0, 4)}配图
                                 </div>
+
+                                {/* Crop tool trigger */}
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCropperSourceImage(getProxiedUrl(currentSecImg));
+                                      setIsCropperOpen(true);
+                                    }}
+                                    className="p-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-bold transition flex items-center gap-1 shadow-sm"
+                                  >
+                                    <Crop className="h-2.5 w-2.5" />
+                                    裁切比例
+                                  </button>
+                                </div>
+
                                 {isSel && (
                                   <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs">
                                     <Check className="h-2 w-2 font-bold" />
@@ -2058,6 +2406,160 @@ ${article.outro}
                           })}
                         </div>
                       </div>
+
+                      {/* 2.3 Preserved Original Graphics / Stickers Box */}
+                      <div className="space-y-2 mt-3 p-4 bg-slate-50 border border-gray-150 rounded-2xl select-none">
+                        <div className="flex justify-between items-center bg-slate-100/40 p-2.5 rounded-xl border border-slate-200/50">
+                          <div className="text-left">
+                            <span className="text-xs font-black text-gray-800 flex items-center gap-1.5">
+                              📦 历史已上传原图（备用贴图/插图区）
+                            </span>
+                            <span className="text-[10px] text-gray-500 block mt-0.5 font-medium leading-relaxed">
+                              您每次在此处上传的封面原件，无需任何剪裁即存放在此，方便后续提取用作贴图。
+                            </span>
+                          </div>
+                          {/* Direct sticker uploader button */}
+                          <label className="shrink-0 cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm select-none">
+                            <Upload className="h-3 w-3" />
+                            存入原图
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                if (file.size > 10 * 1024 * 1024) {
+                                  alert("原图大小请在 10MB 以内以适配本地存储缓存。");
+                                  return;
+                                }
+                                const reader = new FileReader();
+                                reader.onload = (v) => {
+                                  const base64Str = v.target?.result as string;
+                                  const sizeKb = Math.round(file.size / 1024);
+                                  const newSticker: UploadedSticker = {
+                                    id: String(Date.now()),
+                                    name: file.name,
+                                    url: base64Str,
+                                    size: `${sizeKb} KB`,
+                                    addedAt: new Date().toLocaleTimeString("zh-CN", { hour: '2-digit', minute: '2-digit' })
+                                  };
+                                  setUploadedStickers(prev => [newSticker, ...prev]);
+                                };
+                                reader.readAsDataURL(file);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        {uploadedStickers.length === 0 ? (
+                          <div className="p-4 border border-dashed border-gray-200 bg-white/70 rounded-xl text-center text-xs text-slate-400 font-bold leading-relaxed">
+                            暂无暂存原图。每次上传本地封面或点击上面的 “存入原图” 时，高清原尺寸文件都会在此就地暂存。
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-2 max-h-[190px] overflow-y-auto pr-1 bg-white p-2.5 rounded-xl border border-gray-250">
+                            {uploadedStickers.map((st, idx) => {
+                              const isCurrentSelected = selectedCover === st.url;
+                              return (
+                                <div key={st.id} className="flex items-center justify-between gap-3 p-2 bg-slate-50/70 rounded-lg border border-gray-100 shadow-3xs hover:border-emerald-300 transition duration-150">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <img src={st.url} className="w-10 h-10 rounded-md object-cover bg-slate-100 border border-gray-200 shrink-0" />
+                                    <div className="text-left min-w-0">
+                                      <p className="text-xs font-bold text-gray-800 truncate" title={st.name}>
+                                        {idx + 1}. {st.name || "本地原图备件"}
+                                      </p>
+                                      <span className="text-[9.5px] text-gray-450 font-bold block">
+                                        大小: {st.size} • 导入于: {st.addedAt}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {/* Copy base64 option */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        try {
+                                          navigator.clipboard.writeText(st.url);
+                                          alert("🎉 高清原图 Base64 编码已成功复制！可以直接在公众号群发贴图中使用。");
+                                        } catch (err) {
+                                          const el = document.createElement("textarea");
+                                          el.value = st.url;
+                                          document.body.appendChild(el);
+                                          el.select();
+                                          document.execCommand("copy");
+                                          document.body.removeChild(el);
+                                          alert("🎉 高清原图 Base64 编码已强力拷贝至系统剪切版！");
+                                        }
+                                      }}
+                                      className="px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md transition"
+                                    >
+                                      复制发贴图
+                                    </button>
+
+                                    {/* Crop on top of this sticker */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCropperSourceImage(st.url);
+                                        setIsCropperOpen(true);
+                                      }}
+                                      className="px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-md transition flex items-center gap-0.5"
+                                    >
+                                      <Crop className="h-3 w-3" />
+                                      载入裁切
+                                    </button>
+
+                                    {/* Apply as cover */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedCover(st.url);
+                                      }}
+                                      className={`px-2 py-1 text-[10px] font-black rounded-md transition ${
+                                        isCurrentSelected 
+                                          ? "bg-emerald-600 text-white" 
+                                          : "bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200/50"
+                                      }`}
+                                    >
+                                      {isCurrentSelected ? "当前已选" : "作为封面"}
+                                    </button>
+
+                                    {/* Delete sticker */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUploadedStickers(prev => prev.filter(item => item.id !== st.id));
+                                      }}
+                                      className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition"
+                                      title="删除原图缓存"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            <div className="flex justify-between items-center pt-1 px-1">
+                              <span className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                                💡 原图像保存在浏览器端运行空间，清空不会影响当前已生成文章。
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                    if (confirm("提示：确定要清空暂存的所有高清原图吗？这会立刻释放本地存储。")) {
+                                      setUploadedStickers([]);
+                                    }
+                                }}
+                                className="text-[10px] text-red-500 hover:text-red-700 font-bold hover:underline transition"
+                              >
+                                🗑️ 全部清空
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
 
                       {/* Draft Box vs Formal Publish selection */}
                       <div className="p-3 bg-emerald-50/25 border border-emerald-100 rounded-2xl flex items-center justify-between select-none font-sans">
@@ -2350,6 +2852,21 @@ ${article.outro}
           </div>
         )}
       </AnimatePresence>
+
+      {/* Professional WeChat cover cropper modal */}
+      {cropperSourceImage && (
+        <WeChatCoverCropper
+          imageSrc={cropperSourceImage}
+          isOpen={isCropperOpen}
+          onClose={() => {
+            setIsCropperOpen(false);
+            setCropperSourceImage(null);
+          }}
+          onCropComplete={(croppedBase64) => {
+            setSelectedCover(croppedBase64);
+          }}
+        />
+      )}
     </div>
   );
 }
