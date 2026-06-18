@@ -548,6 +548,8 @@ export default function WeChatPreview({
             digest: publishDigest,
             contentHtml: formattedHtml,
             coverUrl: absoluteCoverUrl,
+            originalCoverUrl: absoluteCoverUrl, // For now, passing selectedCover as original, can improve later
+            croppedCoverUrl: absoluteCoverUrl, // For now, passing selectedCover as cropped, can improve later
             originalDeclaration: declareOriginal,
             addToCollection: addToCollect,
             collectionId: collectId,

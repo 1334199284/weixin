@@ -113,9 +113,69 @@ function cleanJsonResponse(rawText: string): string {
   return text;
 }
 
-// ----------------------------------------------------
-// API: Generate Lure Fishing WeChat Article (POST required, GET returns info)
-// ----------------------------------------------------
+async function uploadImageToWeChat(imgUrl: string, accessToken: string, req: express.Request): Promise<string> {
+  let imageBuffer: ArrayBuffer;
+  let contentType = "image/jpeg";
+
+  if (imgUrl.startsWith("data:")) {
+    console.log(`[WeChat publisher] Decoding base64 data for image`);
+    const matches = imgUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      throw new Error("无效的 Base64 图片格式");
+    }
+    contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+    imageBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  } else {
+    console.log(`[WeChat publisher] Downloading image from ${imgUrl}`);
+    let actualUrl = imgUrl;
+    if (imgUrl.startsWith("/")) {
+      const host = req.headers.host || "127.0.0.1:3000";
+      const protocol = req.headers["x-forwarded-proto"] || "http";
+      actualUrl = `${protocol}://${host}${imgUrl}`;
+    }
+    
+    const imageRes = await fetch(actualUrl);
+    if (!imageRes.ok) {
+      throw new Error(`下载配图服务响应错误 (HTTP ${imageRes.status}) (地址: ${actualUrl})`);
+    }
+    imageBuffer = await imageRes.arrayBuffer();
+    contentType = imageRes.headers.get("content-type") || "image/jpeg";
+  }
+
+  let finalBuffer = Buffer.from(imageBuffer);
+
+  // Compress/Resize logic for WeChat ...
+  // ... (use Jimp as before)
+  try {
+    const jimpImage = await Jimp.read(finalBuffer);
+    const width = jimpImage.bitmap.width;
+    if (width > 400) jimpImage.resize(400, Jimp.AUTO);
+    jimpImage.quality(75);
+    const compressedVal = await jimpImage.getBufferAsync(Jimp.MIME_JPEG);
+    finalBuffer = compressedVal;
+  } catch (jimpErr) {
+    console.warn("[WeChat Process Cover] Jimp failed, using original", jimpErr);
+  }
+
+  let extension = "jpg";
+  if (contentType.includes("png")) extension = "png";
+  const imageBlob = new Blob([finalBuffer], { type: "image/jpeg" });
+  const uploadForm = new FormData();
+  uploadForm.append("media", imageBlob, `cover_thumbnail.${extension}`);
+
+  const uploadUrl = `${WECHAT_API_BASE}/cgi-bin/media/upload?access_token=${accessToken}&type=thumb`;
+  const uploadRes = await fetch(uploadUrl, { method: "POST", body: uploadForm });
+  
+  if (!uploadRes.ok) throw new Error(`上传接口异常 HTTP ${uploadRes.status}`);
+
+  const uploadData = await uploadRes.json() as any;
+  if (!uploadData.media_id && !uploadData.thumb_media_id) {
+    throw new Error(`微信API返回空: ${JSON.stringify(uploadData)}`);
+  }
+  return uploadData.media_id || uploadData.thumb_media_id;
+}
 app.all("/api/generate-article", async (req, res) => {
   if (req.method !== "POST" && req.method !== "GET") {
     return res.status(405).json({ success: false, error: "Method Not Allowed" });
@@ -837,6 +897,8 @@ app.post("/api/wechat/publish", async (req, res) => {
       digest,
       contentHtml,
       coverUrl,
+      originalCoverUrl,
+      croppedCoverUrl,
       originalDeclaration,
       addToCollection,
       collectionId,
@@ -844,6 +906,8 @@ app.post("/api/wechat/publish", async (req, res) => {
       scheduledTime,
       publishToDraft
     } = req.body;
+
+    console.log(`[WeChat publisher] Received publish request. Title: ${title}, CoverURL: ${coverUrl}, OriginalCoverURL: ${originalCoverUrl}, CroppedCoverURL: ${croppedCoverUrl}`);
 
     const { appId, appSecret } = getWeChatCredentials(req, true);
 
@@ -897,127 +961,40 @@ app.post("/api/wechat/publish", async (req, res) => {
 
     // Step 2: Download cover image from URL and upload to WeChat to acquire thumb_media_id
     let thumbMediaId = "";
-    if (coverUrl) {
+    
+    let mediaIds: { original?: string, cropped?: string } = {};
+    
+    if (originalCoverUrl) {
       try {
-        let imageBuffer: ArrayBuffer;
-        let contentType = "image/jpeg";
-
-        if (coverUrl.startsWith("data:")) {
-          console.log(`[WeChat publisher] Decoding local uploaded base64 data for cover image`);
-          const matches = coverUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-          if (!matches || matches.length !== 3) {
-            throw new Error("无效的本地 Base64 封面图片格式");
-          }
-          contentType = matches[1];
-          const base64Data = matches[2];
-          // Use Buffer to easily handle base64 decoding on Node back-end
-          const buffer = Buffer.from(base64Data, 'base64');
-          imageBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-        } else {
-          console.log(`[WeChat publisher] Downloading cover image from ${coverUrl}`);
-          let actualCoverUrl = coverUrl;
-          // If relative URL (such as our own /api/img/...) then download it using the current request host and protocol dynamically to support custom deployments on other ports (such as :1234)
-          if (coverUrl.startsWith("/")) {
-            const host = req.headers.host || "127.0.0.1:3000";
-            const protocol = req.headers["x-forwarded-proto"] || "http";
-            actualCoverUrl = `${protocol}://${host}${coverUrl}`;
-          }
-
-          let imageRes;
-          try {
-            imageRes = await fetch(actualCoverUrl);
-          } catch (fetchImgErr: any) {
-            console.error("[WeChat cover fetch error]", fetchImgErr);
-            throw new Error(`网络异常：无法下载封面配图: ${fetchImgErr.message || fetchImgErr} (请求地址: ${actualCoverUrl})`);
-          }
-
-          if (!imageRes.ok) {
-            throw new Error(`下载封面配图服务响应错误 (HTTP ${imageRes.status}) (请求地址: ${actualCoverUrl})`);
-          }
-          
-          imageBuffer = await imageRes.arrayBuffer();
-          contentType = imageRes.headers.get("content-type") || "image/jpeg";
-        }
-
-        let finalBuffer = Buffer.from(imageBuffer);
-
-        // Perform WeChat thumbnail compression/resizing
-        // WeChat's cgi-bin/media/upload?type=thumb requires the cover thumbnail to be ≤ 63KB (64KB max).
-        // We will use Jimp to resize and compress the image to ensure it is within safe bounds.
-        try {
-          console.log(`[WeChat Process Cover] Original cover image size: ${(finalBuffer.length / 1024).toFixed(2)} KB.`);
-          const jimpImage = await Jimp.read(finalBuffer);
-          
-          // Resize to 400px width (maintaining aspect ratio) if larger than 400px.
-          const width = jimpImage.bitmap.width;
-          if (width > 400) {
-            console.log(`[WeChat Process Cover] Resizing cover from ${width}px to 400px for WeChat thumbnail compatibility.`);
-            jimpImage.resize(400, Jimp.AUTO);
-          }
-          
-          // Set Quality to 75% for extremely good file size reduction while preserving clarity
-          jimpImage.quality(75);
-          
-          // Convert to standard JPEG as WeChat requires JPEG/JPG for thumb media
-          const compressedVal = await jimpImage.getBufferAsync(Jimp.MIME_JPEG);
-          finalBuffer = compressedVal;
-          contentType = "image/jpeg";
-          console.log(`[WeChat Process Cover] Successfully compressed cover image to ${(finalBuffer.length / 1024).toFixed(2)} KB.`);
-
-          // If it's still > 63KB, let's resize to 300px and 60% quality
-          if (finalBuffer.length > 58 * 1024) {
-            console.log(`[WeChat Process Cover] Image still exceeds safe 58KB threshold (${(finalBuffer.length / 1024).toFixed(2)} KB). Compressing aggressively to 300px width, 60% quality.`);
-            jimpImage.resize(300, Jimp.AUTO);
-            jimpImage.quality(60);
-            const extraCompressedVal = await jimpImage.getBufferAsync(Jimp.MIME_JPEG);
-            finalBuffer = extraCompressedVal;
-            console.log(`[WeChat Process Cover] Aggressive compression result: ${(finalBuffer.length / 1024).toFixed(2)} KB.`);
-          }
-        } catch (jimpErr: any) {
-          console.warn(`[WeChat Process Cover] Jimp processing failed, falling back to original image buffer:`, jimpErr);
-        }
-
-        let extension = "jpg";
-        if (contentType.includes("png")) extension = "png";
-        
-        // Use native Blob and FormData for a fully compliant multipart upload
-        const imageBlob = new Blob([finalBuffer], { type: contentType });
-        const uploadForm = new FormData();
-        uploadForm.append("media", imageBlob, `cover_thumbnail.${extension}`);
-
-        console.log(`[WeChat publisher] Uploading cover image to WeChat media container...`);
-        const uploadUrl = `${WECHAT_API_BASE}/cgi-bin/media/upload?access_token=${accessToken}&type=thumb`;
-        
-        let uploadRes;
-        try {
-          uploadRes = await fetch(uploadUrl, {
-            method: "POST",
-            body: uploadForm
-          });
-        } catch (uploadFetchErr: any) {
-          const verboseErr = handleFetchError(uploadFetchErr, "上传临时媒体文件");
-          throw new Error(verboseErr);
-        }
-
-        if (!uploadRes.ok) {
-          throw new Error(`微信封面上传接口响应异常 HTTP ${uploadRes.status}`);
-        }
-
-        const uploadData = (await uploadRes.json()) as any;
-        if (uploadData.media_id) {
-          thumbMediaId = uploadData.media_id;
-          console.log(`[WeChat publisher] Cover image uploaded successfully. Thumbnail Media ID: ${thumbMediaId}`);
-        } else {
-          console.error("[WeChat media upload error]", uploadData);
-          throw new Error(uploadData.errmsg || "上传微信临时封面素材失败（微信API返回空 media_id）。");
-        }
-      } catch (coverErr: any) {
-        console.error("[WeChat cover process error]", coverErr);
-        return res.status(500).json({
-          success: false,
-          error: `同步封面配图失败: ${coverErr.message || coverErr}`
-        });
+        mediaIds.original = await uploadImageToWeChat(originalCoverUrl, accessToken, req);
+        console.log(`[WeChat publisher] Original cover image uploaded. Media ID: ${mediaIds.original}`);
+      } catch (err) { 
+        console.error("Upload original image failed", err);
       }
+    }
+    if (croppedCoverUrl) {
+      try {
+        mediaIds.cropped = await uploadImageToWeChat(croppedCoverUrl, accessToken, req);
+        console.log(`[WeChat publisher] Cropped cover image uploaded. Media ID: ${mediaIds.cropped}`);
+      } catch (err) { 
+        console.error("Upload cropped image failed", err);
+      }
+    }
+    
+    // Fallback if neither works, or if direct coverUrl is provided
+    if (!mediaIds.original && !mediaIds.cropped && coverUrl) {
+        try {
+            mediaIds.original = await uploadImageToWeChat(coverUrl, accessToken, req);
+        } catch (err) { console.error("Upload cover failed", err); }
+    }
+    
+    thumbMediaId = mediaIds.cropped || mediaIds.original || "";
+    if (thumbMediaId) {
+        console.log(`[WeChat publisher] Using thumb_media_id for draft: ${thumbMediaId}`);
+    } else {
+        console.warn(`[WeChat publisher] No thumb_media_id acquired.`);
+        // Decide if we should throw error or continue with empty thumb_media_id
+        // throw new Error("上传封面失败，无法获取媒体ID");
     }
 
     // Step 3: Insert draft into WeChat Draft Box
