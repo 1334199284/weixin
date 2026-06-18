@@ -189,6 +189,33 @@ export default function WeChatPreview({
   });
 
   const [serverPublicIp, setServerPublicIp] = useState("正在获取...");
+  const [serverWeChatConfig, setServerWeChatConfig] = useState<{
+    appIdConfigured: boolean;
+    appSecretConfigured: boolean;
+    appId?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchServerWeChatConfig = async () => {
+      try {
+        const res = await fetch("/api/wechat/config");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setServerWeChatConfig({
+              appIdConfigured: data.appIdConfigured,
+              appSecretConfigured: data.appSecretConfigured,
+              appId: data.appId
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to retrieve server WeChat config status", err);
+      }
+    };
+    fetchServerWeChatConfig();
+  }, []);
+
   const [syncMode, setSyncMode] = useState<"sandbox" | "official">("sandbox");
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
@@ -382,8 +409,10 @@ export default function WeChatPreview({
 
   // Fetch collections list directly from WeChat server
   const handleFetchCollections = async () => {
-    if (!publishAppId || !publishAppSecret) {
-      setAlbumFetchError("请先在左侧输入微信开发者凭证：AppID 和 AppSecret。");
+    const isServerSideConfigured = !!(serverWeChatConfig?.appIdConfigured && serverWeChatConfig?.appSecretConfigured);
+
+    if (!isServerSideConfigured && (!publishAppId || !publishAppSecret)) {
+      setAlbumFetchError("请先在高级凭证设置中输入公众号凭证：AppID 和 AppSecret（或由系统管理员配置服务器环境变量）。");
       return;
     }
 
@@ -391,10 +420,22 @@ export default function WeChatPreview({
     setAlbumFetchError(null);
     try {
       const targetServer = syncServerUrl.trim() || API_BASE_URL;
-      const url = `${targetServer}/api/wechat/albums?appId=${encodeURIComponent(publishAppId)}&appSecret=${encodeURIComponent(publishAppSecret)}`;
-      const res = await fetch(url);
+      const url = `${targetServer}/api/wechat/albums`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wechat-appid": publishAppId,
+          "x-wechat-appsecret": publishAppSecret
+        },
+        body: JSON.stringify({
+          appId: publishAppId,
+          appSecret: publishAppSecret
+        })
+      });
       if (!res.ok) {
-        throw new Error(`服务器通道响应异常：HTTP ${res.status}`);
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `服务器通道响应异常：HTTP ${res.status}`);
       }
       const data = await res.json();
       if (data.success) {
@@ -410,7 +451,7 @@ export default function WeChatPreview({
         setAlbumFetchError(data.error || "获取合集失败");
       }
     } catch (err: any) {
-      setAlbumFetchError(`网路请求失败：${err.message || err}`);
+      setAlbumFetchError(`该同步网路请求失败：${err.message || err}`);
     } finally {
       setFetchingAlbums(false);
     }
@@ -450,21 +491,25 @@ export default function WeChatPreview({
 
     // If Mode is official, perform full validation and call backend API
     if (syncMode === "official") {
-      if (!publishAppId || !publishAppId.trim()) {
-        setIsPublishing(false);
-        setPublishResult({
-          success: false,
-          message: "【校验未通过】在「真实接口对接」服务模式下，微信 AppID 必填。请输入以 wx 开头的公众号开发者 ID。"
-        });
-        return;
-      }
-      if (!publishAppSecret || !publishAppSecret.trim()) {
-        setIsPublishing(false);
-        setPublishResult({
-          success: false,
-          message: "【校验未通过】在「真实接口对接」服务模式下，微信 AppSecret 必填。请填入您备份的 32 位开发者保密密钥。"
-        });
-        return;
+      const isServerSideConfigured = !!(serverWeChatConfig?.appIdConfigured && serverWeChatConfig?.appSecretConfigured);
+
+      if (!isServerSideConfigured) {
+        if (!publishAppId || !publishAppId.trim()) {
+          setIsPublishing(false);
+          setPublishResult({
+            success: false,
+            message: "【校验未通过】微信 AppID 必填。请在高级同步凭证中输入以 wx 开头的后台 ID，或联系系统管理员在服务器端注入 WECHAT_APPID 环境变量。"
+          });
+          return;
+        }
+        if (!publishAppSecret || !publishAppSecret.trim()) {
+          setIsPublishing(false);
+          setPublishResult({
+            success: false,
+            message: "【校验未通过】微信 AppSecret 必填。请在高级同步凭证中填写 32 位开发者保密密钥，或联系系统管理员在服务器端注入 WECHAT_APPSECRET 环境变量。"
+          });
+          return;
+        }
       }
 
       // Convert to absolute local URI if needed, ensuring the remote server can fetch and upload it
@@ -490,7 +535,11 @@ export default function WeChatPreview({
         const targetServer = syncServerUrl.trim() || API_BASE_URL;
         const res = await fetch(`${targetServer}/api/wechat/publish`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "x-wechat-appid": publishAppId,
+            "x-wechat-appsecret": publishAppSecret
+          },
           body: JSON.stringify({
             appId: publishAppId,
             appSecret: publishAppSecret,
@@ -1980,6 +2029,10 @@ ${article.outro}
                       <span className="text-emerald-700 block bg-emerald-50 border border-emerald-100/60 p-2.5 rounded-xl font-medium">
                         ✨ 当前为<b>免密沙箱模式</b>：无需开发凭证、无需配置 IP 白名单，点按同步一秒内仿真模拟生成完成。方便评审与一秒免密演示。
                       </span>
+                    ) : serverWeChatConfig?.appIdConfigured && serverWeChatConfig?.appSecretConfigured ? (
+                      <span className="text-emerald-800 block bg-emerald-50 border border-emerald-150 p-2.5 rounded-xl font-medium">
+                        ✅ <b>凭证就绪 (服务器变量配置完毕)</b>：服务器端检测到 WECHAT_APPID 环境变量已加载。本地处于高强度密钥免填模式，您可以直接拉取合集或执行同步发布。
+                      </span>
                     ) : (
                       <span className="text-amber-800 block bg-amber-50 border border-amber-100 p-2.5 rounded-xl font-medium">
                         ⚠️ 运行于<b>真实接口对接模式</b>：系统将直接安全通过微信公众号官方 API 传输文章。两侧必须配置真实的 AppID 与 Secret 凭证。
@@ -1991,31 +2044,53 @@ ${article.outro}
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
                         <label className="block text-xs font-bold text-gray-700">微信 AppID</label>
-                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${syncMode === "official" ? "bg-red-50 text-red-600 border border-red-100 anim-pulse" : "bg-zinc-150 text-zinc-500"}`}>
-                          {syncMode === "official" ? "真实必填" : "沙箱选填"}
+                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${
+                          serverWeChatConfig?.appIdConfigured ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : (syncMode === "official" ? "bg-red-50 text-red-600 border border-red-100 anim-pulse" : "bg-zinc-150 text-zinc-500")
+                        }`}>
+                          {serverWeChatConfig?.appIdConfigured ? "已从服务端读取" : (syncMode === "official" ? "真实必填" : "沙箱选填")}
                         </span>
                       </div>
                       <input
                         type="text"
                         value={publishAppId}
+                        disabled={!!serverWeChatConfig?.appIdConfigured}
                         onChange={(e) => setPublishAppId(e.target.value)}
-                        placeholder={syncMode === "official" ? "请输入以 wx 开头的真实 AppID" : "任意输入 / 沙箱免敏模式..."}
-                        className={`w-full text-xs p-2.5 border rounded-xl bg-white focus:outline-emerald-505 text-gray-800 font-mono transition-all duration-200 ${syncMode === "official" && !publishAppId ? "border-amber-400 bg-amber-50/10 placeholder-amber-400" : "border-gray-200"}`}
+                        placeholder={
+                          serverWeChatConfig?.appIdConfigured 
+                            ? `已读取服务器变量：${serverWeChatConfig.appId || "未公开"}`
+                            : (syncMode === "official" ? "请输入以 wx 开头的真实 AppID" : "任意输入 / 沙箱免敏模式...")
+                        }
+                        className={`w-full text-xs p-2.5 border rounded-xl bg-white focus:outline-emerald-505 text-gray-800 font-mono transition-all duration-200 ${
+                          serverWeChatConfig?.appIdConfigured 
+                            ? "bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200/80" 
+                            : (syncMode === "official" && !publishAppId ? "border-amber-400 bg-amber-50/10 placeholder-amber-400" : "border-gray-200")
+                        }`}
                       />
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
                         <label className="block text-xs font-bold text-gray-700">微信 AppSecret</label>
-                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${syncMode === "official" ? "bg-red-50 text-red-600 border border-red-100 anim-pulse" : "bg-zinc-150 text-zinc-500"}`}>
-                          {syncMode === "official" ? "真实必填" : "沙箱选填"}
+                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${
+                          serverWeChatConfig?.appSecretConfigured ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : (syncMode === "official" ? "bg-red-50 text-red-600 border border-red-100 anim-pulse" : "bg-zinc-150 text-zinc-500")
+                        }`}>
+                          {serverWeChatConfig?.appSecretConfigured ? "已从服务端读取" : (syncMode === "official" ? "真实必填" : "沙箱选填")}
                         </span>
                       </div>
                       <input
                         type="password"
                         value={publishAppSecret}
+                        disabled={!!serverWeChatConfig?.appSecretConfigured}
                         onChange={(e) => setPublishAppSecret(e.target.value)}
-                        placeholder={syncMode === "official" ? "请输入公众号的秘钥 AppSecret" : "任意输入 / 沙箱免敏模式..."}
-                        className={`w-full text-xs p-2.5 border rounded-xl bg-white focus:outline-emerald-505 text-gray-850 font-mono transition-all duration-200 ${syncMode === "official" && !publishAppSecret ? "border-amber-400 bg-amber-50/10 placeholder-amber-400" : "border-gray-200"}`}
+                        placeholder={
+                          serverWeChatConfig?.appSecretConfigured
+                            ? "微信密钥已由服务器安全锁定，受保护运行中"
+                            : (syncMode === "official" ? "请输入公众号的秘钥 AppSecret" : "任意输入 / 沙箱免敏模式...")
+                        }
+                        className={`w-full text-xs p-2.5 border rounded-xl bg-white focus:outline-emerald-505 text-gray-850 font-mono transition-all duration-200 ${
+                          serverWeChatConfig?.appSecretConfigured
+                            ? "bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200/80"
+                            : (syncMode === "official" && !publishAppSecret ? "border-amber-400 bg-amber-50/10 placeholder-amber-400" : "border-gray-200")
+                        }`}
                       />
                     </div>
                     {/* Sync Middle tier Server URL */}

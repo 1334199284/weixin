@@ -7,6 +7,33 @@ import { createServer as createViteServer } from "vite";
 // Load environment variables from .env
 dotenv.config();
 
+const WECHAT_API_BASE = process.env.WECHAT_API_URL || "https://api.weixin.org";
+
+function getWeChatCredentials(req: express.Request, isPost: boolean = false) {
+  let appId = process.env.WECHAT_APPID;
+  let appSecret = process.env.WECHAT_APPSECRET;
+
+  if (!appId) appId = req.headers["x-wechat-appid"] as string;
+  if (!appSecret) appSecret = req.headers["x-wechat-appsecret"] as string;
+
+  if (!appId) appId = (isPost ? req.body?.appId : req.query?.appId) as string;
+  if (!appSecret) appSecret = (isPost ? req.body?.appSecret : req.query?.appSecret) as string;
+
+  return {
+    appId: appId ? String(appId).trim() : "",
+    appSecret: appSecret ? String(appSecret).trim() : ""
+  };
+}
+
+function handleFetchError(err: any, endpointName: string) {
+  console.error(`[WeChat ${endpointName}] Fetch error:`, err);
+  const errMsg = err.message || String(err);
+  if (errMsg.includes("ENOTFOUND") || errMsg.includes("fetch failed") || errMsg.includes("getaddrinfo")) {
+    return `无法访问微信官方接口服务器 (${WECHAT_API_BASE})，发生网络/DNS解析错误: ${errMsg}。\n\n【排查指引】：由于有些海外或容器云环境（如 Cloud Run）的公共 DNS 无法直连或解析官方接口（api.weixin.org），请选择：\n1.【推荐】在微信同步设置最下方的「高级设置」区域配置第三方的同步代理网关（例如您的 http://www.legns.top:1234 等）；\n2.【环境变量】在系统配置中通过 WECHAT_API_URL 环境变量指定微信 API 接口中转代理；\n3.【IP白名单】请确认您的服务器出站 IP 是否已填写到微信公众号后台的“IP白名单”中。`;
+  }
+  return `连接微信 ${endpointName} 失败，网络连接异常: ${errMsg}`;
+}
+
 const app = express();
 const PORT = 3000;
 
@@ -804,8 +831,6 @@ app.get("/api/server-info", async (req, res) => {
 app.post("/api/wechat/publish", async (req, res) => {
   try {
     const {
-      appId,
-      appSecret,
       title,
       author,
       digest,
@@ -819,10 +844,12 @@ app.post("/api/wechat/publish", async (req, res) => {
       publishToDraft
     } = req.body;
 
+    const { appId, appSecret } = getWeChatCredentials(req, true);
+
     if (!appId || !appSecret) {
       return res.status(400).json({
         success: false,
-        error: "缺少必要的微信开发者凭证：AppID 和 AppSecret 不能为空。"
+        error: "缺少必要的微信开发者凭证：未在系统环境变量中配置，且请求中未提供合法的 AppID 或 AppSecret。"
       });
     }
 
@@ -834,17 +861,17 @@ app.post("/api/wechat/publish", async (req, res) => {
     }
 
     // Step 1: Fetch Official WeChat access_token
-    console.log(`[WeChat publisher] Connecting to WeChat API for AppID: ${appId}`);
-    const tokenUrl = `https://api.weixin.org/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
+    console.log(`[WeChat publisher] Connecting to WeChat API at ${WECHAT_API_BASE} for AppID: ${appId}`);
+    const tokenUrl = `${WECHAT_API_BASE}/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
     
     let tokenRes;
     try {
       tokenRes = await fetch(tokenUrl);
     } catch (fetchTokenErr: any) {
-      console.error("[WeChat token fetch error]", fetchTokenErr);
+      const verboseErr = handleFetchError(fetchTokenErr, "获取 Access Token");
       return res.status(500).json({
         success: false,
-        error: `连接微信服务器（获取 Access Token）失败，网络连接异常: ${fetchTokenErr.message || fetchTokenErr}。请检查您的服务器出站网络是否被限制，或确保 IP 白名单配置正确。`
+        error: verboseErr
       });
     }
     
@@ -860,7 +887,7 @@ app.post("/api/wechat/publish", async (req, res) => {
       console.error("[WeChat error]", tokenData);
       return res.status(400).json({
         success: false,
-        error: tokenData.errmsg || "获取 WeChat access_token 失败。请检查微信后台的 AppID 与 AppSecret，并确保服务器 IP 已在 IP 白名单中。",
+        error: tokenData.errmsg || "获取 WeChat access_token 失败。请检查微信后台的 AppID 与 AppSecret，并确保服务器 IP 已在 IP 白名单中（如果有配置中介代理服务，请确保中介参数无误）。",
         errcode: tokenData.errcode
       });
     }
@@ -920,7 +947,7 @@ app.post("/api/wechat/publish", async (req, res) => {
         uploadForm.append("media", imageBlob, `cover_thumbnail.${extension}`);
 
         console.log(`[WeChat publisher] Uploading cover image to WeChat media container...`);
-        const uploadUrl = `https://api.weixin.org/cgi-bin/media/upload?access_token=${accessToken}&type=thumb`;
+        const uploadUrl = `${WECHAT_API_BASE}/cgi-bin/media/upload?access_token=${accessToken}&type=thumb`;
         
         let uploadRes;
         try {
@@ -929,8 +956,8 @@ app.post("/api/wechat/publish", async (req, res) => {
             body: uploadForm
           });
         } catch (uploadFetchErr: any) {
-          console.error("[WeChat upload fetch network error]", uploadFetchErr);
-          throw new Error(`上传临时媒体文件到微信服务器时，网络通信失败: ${uploadFetchErr.message || uploadFetchErr}`);
+          const verboseErr = handleFetchError(uploadFetchErr, "上传临时媒体文件");
+          throw new Error(verboseErr);
         }
 
         if (!uploadRes.ok) {
@@ -960,7 +987,7 @@ app.post("/api/wechat/publish", async (req, res) => {
 
     // Step 3: Insert draft into WeChat Draft Box
     console.log(`[WeChat publisher] Creating drafted article in WeChat...`);
-    const draftAddUrl = `https://api.weixin.org/cgi-bin/draft/add?access_token=${accessToken}`;
+    const draftAddUrl = `${WECHAT_API_BASE}/cgi-bin/draft/add?access_token=${accessToken}`;
     
     // WeChat draft body
     const draftPayload = {
@@ -1018,7 +1045,7 @@ app.post("/api/wechat/publish", async (req, res) => {
     if (addToCollection && collectionId) {
       try {
         console.log(`[WeChat publisher] Attempting to add draft to collection ID: ${collectionId}`);
-        const collectionUrl = `https://api.weixin.org/cgi-bin/album/adddraft?access_token=${accessToken}`;
+        const collectionUrl = `${WECHAT_API_BASE}/cgi-bin/album/adddraft?access_token=${accessToken}`;
         
         let colRes;
         try {
@@ -1031,8 +1058,8 @@ app.post("/api/wechat/publish", async (req, res) => {
             })
           });
         } catch (colFetchErr: any) {
-          console.error("[WeChat collection fetch network error]", colFetchErr);
-          throw new Error(`请求添加合集专栏超时或失败: ${colFetchErr.message || colFetchErr}`);
+          const verboseErr = handleFetchError(colFetchErr, "向合集专栏添加草稿");
+          throw new Error(verboseErr);
         }
 
         if (colRes && colRes.ok) {
@@ -1058,7 +1085,7 @@ app.post("/api/wechat/publish", async (req, res) => {
     if (!onlyDraft) {
       try {
         console.log(`[WeChat publisher] Performing Free Publish for media_id: ${draftMediaId}`);
-        const publishUrl = `https://api.weixin.org/cgi-bin/freepublish/submit?access_token=${accessToken}`;
+        const publishUrl = `${WECHAT_API_BASE}/cgi-bin/freepublish/submit?access_token=${accessToken}`;
         
         let pubRes;
         try {
@@ -1070,8 +1097,8 @@ app.post("/api/wechat/publish", async (req, res) => {
             })
           });
         } catch (pubFetchErr: any) {
-          console.error("[WeChat publish fetch network error]", pubFetchErr);
-          throw new Error(`连接微信公众号正式发表（群发）接口失败: ${pubFetchErr.message || pubFetchErr}`);
+          const verboseErr = handleFetchError(pubFetchErr, "正式发布/群发");
+          throw new Error(verboseErr);
         }
 
         if (!pubRes.ok) {
@@ -1126,9 +1153,9 @@ app.post("/api/wechat/publish", async (req, res) => {
 // ----------------------------------------------------
 // API: Fetch WeChat Official Account Album/Collection list
 // ----------------------------------------------------
-app.get("/api/wechat/albums", async (req, res) => {
+app.all("/api/wechat/albums", async (req, res) => {
   try {
-    const { appId, appSecret } = req.query;
+    const { appId, appSecret } = getWeChatCredentials(req, req.method === "POST");
 
     if (!appId || !appSecret) {
       return res.status(400).json({
@@ -1138,17 +1165,17 @@ app.get("/api/wechat/albums", async (req, res) => {
     }
 
     // Step 1: Fetch Official WeChat access_token
-    console.log(`[WeChat Album] Connecting to WeChat API for AppID: ${appId}`);
-    const tokenUrl = `https://api.weixin.org/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
+    console.log(`[WeChat Album] Connecting to WeChat API at ${WECHAT_API_BASE} for AppID: ${appId}`);
+    const tokenUrl = `${WECHAT_API_BASE}/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
     
     let tokenRes;
     try {
       tokenRes = await fetch(tokenUrl);
     } catch (fetchTokenErr: any) {
-      console.error("[WeChat token fetch error (album)]", fetchTokenErr);
+      const verboseErr = handleFetchError(fetchTokenErr, "获取 Access Token");
       return res.status(500).json({
         success: false,
-        error: `连接微信服务器（获取 Access Token）失败，网络连接异常: ${fetchTokenErr.message || fetchTokenErr}。请检查您的服务器出站网络，并确保已将您的服务 IP 添加到微信公众后台的 IP 白名单中。`
+        error: verboseErr
       });
     }
     
@@ -1170,7 +1197,7 @@ app.get("/api/wechat/albums", async (req, res) => {
     const accessToken = tokenData.access_token;
     
     console.log(`[WeChat Album] Fetching album list...`);
-    const albumUrl = `https://api.weixin.org/cgi-bin/album/getall?access_token=${accessToken}`;
+    const albumUrl = `${WECHAT_API_BASE}/cgi-bin/album/getall?access_token=${accessToken}`;
     
     let albumRes;
     try {
@@ -1183,10 +1210,10 @@ app.get("/api/wechat/albums", async (req, res) => {
         })
       });
     } catch (albumFetchErr: any) {
-      console.error("[WeChat album fetch network error]", albumFetchErr);
+      const verboseErr = handleFetchError(albumFetchErr, "获取合集专栏列表");
       return res.status(500).json({
         success: false,
-        error: `连接微信公众合集/专辑数据服务失败，网络异常: ${albumFetchErr.message || albumFetchErr}`
+        error: verboseErr
       });
     }
     
@@ -1217,6 +1244,18 @@ app.get("/api/wechat/albums", async (req, res) => {
       error: `系统内部获取合集通道异常: ${error.message || String(error)}`
     });
   }
+});
+
+// ----------------------------------------------------
+// API: Query server-side WeChat configuration states
+// ----------------------------------------------------
+app.get("/api/wechat/config", (req, res) => {
+  res.json({
+    success: true,
+    appIdConfigured: !!process.env.WECHAT_APPID,
+    appSecretConfigured: !!process.env.WECHAT_APPSECRET,
+    appId: process.env.WECHAT_APPID ? `${process.env.WECHAT_APPID.substring(0, 6)}******` : ""
+  });
 });
 
 // ----------------------------------------------------
