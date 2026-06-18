@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import cors from "cors";
 import wechatRoutes from "./server/wechat-routes";
 
 dotenv.config();
@@ -13,14 +14,8 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   
-  // Minimal CORS
-  app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    if (req.method === "OPTIONS") return res.sendStatus(200);
-    next();
-  });
+  // Use cors middleware
+  app.use(cors());
   
   app.use("/api", wechatRoutes);
 
