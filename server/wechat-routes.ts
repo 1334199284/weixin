@@ -1,6 +1,6 @@
 import express from "express";
 import { getWeChatAccessToken } from "./wechat-token";
-import { getWeChatCredentials, handleFetchError } from "./utils";
+import { handleFetchError } from "./utils";
 import FormData from "form-data";
 import Jimp from "jimp";
 import axios from "axios";
@@ -59,11 +59,8 @@ async function uploadImageToWeChat(imgUrl: string, accessToken: string, req: exp
 }
 
 router.post("/upload-media", async (req, res) => {
-    const { appId, appSecret } = getWeChatCredentials(req, true);
-    if (!appId || !appSecret) return res.status(400).json({ success: false, error: "Missing AppID/Secret" });
-
     try {
-        const accessToken = await getWeChatAccessToken(appId, appSecret);
+        const accessToken = await getWeChatAccessToken();
         const { imgUrl } = req.body;
         
         if (!imgUrl) return res.status(400).json({ success: false, error: "Missing imgUrl" });
@@ -73,17 +70,19 @@ router.post("/upload-media", async (req, res) => {
         res.json({ success: true, media_id: mediaId });
     } catch (err: any) {
         console.error("[WeChat Upload Media] Error:", err);
-        res.status(500).json({ success: false, error: err.message });
+        // Specifically catch missing credentials
+        if (err.message === "Missing credentials") {
+             res.status(401).json({ success: false, error: "微信 AppID 或 AppSecret 未设置。请在设置中配置。" });
+        } else {
+             res.status(500).json({ success: false, error: err.message });
+        }
     }
 });
 
 router.post("/publish", async (req, res) => {
     console.log("[WeChat Publish] Entering routessss");
-    const { appId, appSecret } = getWeChatCredentials(req, true);
-    if (!appId || !appSecret) return res.status(400).json({ success: false, error: "Missing AppID/Secret" });
-
     try {
-        const accessToken = await getWeChatAccessToken(appId, appSecret);
+        const accessToken = await getWeChatAccessToken();
         const { title, contentHtml, coverUrl, thumbMediaId, author, publishToDraft } = req.body;
         
         let targetMediaId = thumbMediaId || "";
@@ -134,11 +133,8 @@ router.post("/publish", async (req, res) => {
 });
 
 router.post("/albums", async (req, res) => {
-    const { appId, appSecret } = getWeChatCredentials(req, true);
-    if (!appId || !appSecret) return res.status(400).json({ success: false, error: "Missing AppID/Secret" });
-    
     try {
-        const accessToken = await getWeChatAccessToken(appId, appSecret);
+        const accessToken = await getWeChatAccessToken();
         const albumUrl = `${WECHAT_API_BASE}/cgi-bin/album/getall?access_token=${accessToken}`;
         const resData = await fetch(albumUrl);
         const data = await resData.json();

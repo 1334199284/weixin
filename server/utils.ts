@@ -1,21 +1,5 @@
 import express from "express";
 
-export function getWeChatCredentials(req: express.Request, isPost: boolean = false) {
-  let appId = process.env.WECHAT_APPID;
-  let appSecret = process.env.WECHAT_APPSECRET;
-
-  if (!appId) appId = req.headers["x-wechat-appid"] as string;
-  if (!appSecret) appSecret = req.headers["x-wechat-appsecret"] as string;
-
-  if (!appId) appId = (isPost ? req.body?.appId : req.query?.appId) as string;
-  if (!appSecret) appSecret = (isPost ? req.body?.appSecret : req.query?.appSecret) as string;
-
-  return {
-    appId: appId ? String(appId).trim() : "",
-    appSecret: appSecret ? String(appSecret).trim() : ""
-  };
-}
-
 export function handleFetchError(err: any, endpointName: string, WECHAT_API_BASE: string) {
   console.error(`[WeChat ${endpointName}] Fetch error:`, err);
   const errMsg = err.message || String(err);

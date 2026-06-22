@@ -31,26 +31,30 @@ async function fetchNewTokenDirectly(appId: string, appSecret: string): Promise<
   return data.access_token;
 }
 
-export async function getWeChatAccessToken(appId: string, appSecret: string): Promise<string> {
-  const cached = wechatTokenCache[appId];
+export async function getWeChatAccessToken(appId?: string, appSecret?: string): Promise<string> {
+  const id = appId || process.env.WECHAT_APPID;
+  const secret = appSecret || process.env.WECHAT_APPSECRET;
+  if (!id || !secret) throw new Error("Missing credentials");
+
+  const cached = wechatTokenCache[id];
   if (cached) {
     return cached.token;
   }
   
-  const token = await fetchNewTokenDirectly(appId, appSecret);
+  const token = await fetchNewTokenDirectly(id, secret);
   
   // Set up periodic refresh every 7000 seconds
   const refreshInterval = setInterval(async () => {
       try {
-          const newToken = await fetchNewTokenDirectly(appId, appSecret);
-          wechatTokenCache[appId].token = newToken;
-          console.log(`[WeChat TokenManager] Succesfully refreshed token for ${appId}`);
+          const newToken = await fetchNewTokenDirectly(id, secret);
+          wechatTokenCache[id].token = newToken;
+          console.log(`[WeChat TokenManager] Succesfully refreshed token for ${id}`);
       } catch (err) {
-          console.error(`[WeChat TokenManager] Periodic refresh failed for ${appId}:`, err);
+          console.error(`[WeChat TokenManager] Periodic refresh failed for ${id}:`, err);
       }
   }, 7000 * 1000);
 
-  wechatTokenCache[appId] = { token, appSecret, refreshInterval };
+  wechatTokenCache[id] = { token, appSecret: secret, refreshInterval };
   
   return token;
 }

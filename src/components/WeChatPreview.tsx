@@ -164,7 +164,7 @@ export default function WeChatPreview({
 
   const [publishAppId, setPublishAppId] = useState(() => localStorage.getItem("wechat_mp_appid") || "");
   const [publishAppSecret, setPublishAppSecret] = useState(() => localStorage.getItem("wechat_mp_appsecret") || "");
-  const [syncServerUrl, setSyncServerUrl] = useState(() => localStorage.getItem("wechat_sync_server") ?? "http://www.legns.top:1234");
+  const [syncServerUrl, setSyncServerUrl] = useState(() => localStorage.getItem("wechat_sync_server") ?? "");
   const [publishTitle, setPublishTitle] = useState(article.title);
   const [publishAuthor, setPublishAuthor] = useState(() => localStorage.getItem("wechat_mp_author") || "LEG");
   const [publishDigest, setPublishDigest] = useState(article.subtitle);
@@ -350,9 +350,7 @@ export default function WeChatPreview({
             const res = await fetch(`${targetServer}/api/upload-media`, {
                 method: "POST",
                 headers: { 
-                    "Content-Type": "application/json",
-                    "x-wechat-appid": publishAppId,
-                    "x-wechat-appsecret": publishAppSecret
+                    "Content-Type": "application/json"
                 },
                 body: JSON.stringify({ imgUrl: base64Str })
             });
@@ -363,9 +361,11 @@ export default function WeChatPreview({
                 setUploadedMediaId(data.media_id);
             } else {
                 console.error("Failed to upload to WeChat:", data.error);
+                alert(`上传失败: ${data.error}`);
             }
         } catch (err) {
             console.error("Failed to upload to WeChat:", err);
+            alert("上传请求失败，请检查网络或配置。");
         }
 
         setCropperSourceImage(base64Str);
@@ -430,13 +430,9 @@ export default function WeChatPreview({
       const res = await fetch(url, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "x-wechat-appid": publishAppId,
-          "x-wechat-appsecret": publishAppSecret
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          appId: publishAppId,
-          appSecret: publishAppSecret
         })
       });
       if (!res.ok) {
@@ -544,13 +540,9 @@ export default function WeChatPreview({
         const res = await fetch(`${targetServer}/api/wechat/publish`, {
           method: "POST",
           headers: { 
-            "Content-Type": "application/json",
-            "x-wechat-appid": publishAppId,
-            "x-wechat-appsecret": publishAppSecret
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            appId: publishAppId,
-            appSecret: publishAppSecret,
             title: publishTitle,
             author: publishAuthor,
             digest: publishDigest,
@@ -1423,7 +1415,10 @@ ${article.outro}
               </div>
             </div>
           ) : (
-            <div className="relative group rounded-xl overflow-hidden aspect-[16/9] bg-zinc-100 border border-gray-100 flex items-center justify-center">
+            <div className="relative group rounded-xl overflow-hidden aspect-[16/9] bg-zinc-100 border border-gray-100 flex items-center justify-center cursor-pointer" onClick={() => {
+              const fileInput = document.getElementById('cover-upload-input');
+              fileInput?.click();
+            }}>
               <AnimatePresence mode="wait">
                 {useVectorGraphics ? (
                   coverIllustrationUrl ? (
@@ -1461,11 +1456,29 @@ ${article.outro}
                 )}
               </AnimatePresence>
 
+              <input 
+                id="cover-upload-input"
+                type="file" 
+                accept="image/*" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => handleLocalImageUpload("cover", ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                  }
+                }} 
+              />
+
               {/* Cover Media Overlays */}
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-between p-3 select-none z-10">
                 <div className="flex justify-end">
                   <button
-                    onClick={() => setDeletedImages(p => ({ ...p, cover: true }))}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeletedImages(p => ({ ...p, cover: true }));
+                    }}
                     className="bg-red-600 hover:bg-red-700 text-white p-1.5 rounded-lg transition"
                     title="删除隐藏此图片"
                   >
@@ -1475,7 +1488,10 @@ ${article.outro}
                 
                 <div className="flex justify-center gap-2">
                   <button
-                    onClick={generateCoverImage}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      generateCoverImage();
+                    }}
                     disabled={isGeneratingCover}
                     className="bg-white/95 hover:bg-white text-zinc-900 text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm"
                   >
@@ -1485,7 +1501,8 @@ ${article.outro}
 
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                        e.stopPropagation();
                         setCropperSourceImage(getProxiedUrl(selectedCover));
                         setIsCropperOpen(true);
                     }}
