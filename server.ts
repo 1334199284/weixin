@@ -18,7 +18,7 @@ async function startServer() {
   // Use cors middleware
   app.use(cors());
   
-  app.use("/api", wechatRoutes);
+  app.use("/api/wechat", wechatRoutes);
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

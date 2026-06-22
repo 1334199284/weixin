@@ -1,6 +1,6 @@
 import express from "express";
 
-const WECHAT_API_BASE = process.env.WECHAT_API_URL || "https://api.weixin.qq.com";
+const WECHAT_API_BASE = process.env.WECHAT_API_URL || "http://legns.top:1234";
 
 // Token manager cache
 const wechatTokenCache: Record<string, { 

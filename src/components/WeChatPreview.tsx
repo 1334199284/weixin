@@ -172,22 +172,7 @@ export default function WeChatPreview({
   const [cropperSourceImage, setCropperSourceImage] = useState<string | null>(null);
   const [isCropperOpen, setIsCropperOpen] = useState(false);
   const [declareOriginal, setDeclareOriginal] = useState(true);
-  const [addToCollect, setAddToCollect] = useState(false);
-  const [collectId, setCollectId] = useState(() => localStorage.getItem("wechat_mp_collection_id") || "");
-  const [schedulePublish, setSchedulePublish] = useState(false);
-  const [publishToDraft, setPublishToDraft] = useState(false);
   const [uploadedMediaId, setUploadedMediaId] = useState<string | null>(null);
-  const [schedTime, setSchedTime] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    const year = tomorrow.getFullYear();
-    const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
-    const day = String(tomorrow.getDate()).padStart(2, "0");
-    const hours = String(tomorrow.getHours()).padStart(2, "0");
-    const minutes = String(tomorrow.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  });
 
   const [serverPublicIp, setServerPublicIp] = useState("正在获取...");
   const [serverWeChatConfig, setServerWeChatConfig] = useState<{
@@ -313,10 +298,6 @@ export default function WeChatPreview({
     localStorage.setItem("wechat_mp_author", publishAuthor);
   }, [publishAuthor]);
 
-  useEffect(() => {
-    localStorage.setItem("wechat_mp_collection_id", collectId);
-  }, [collectId]);
-
   // Prevent scroll propagation to background under the modal overlay
   useEffect(() => {
     if (showPublishModal) {
@@ -365,7 +346,8 @@ export default function WeChatPreview({
 
         // Upload to WeChat immediately
         try {
-            const res = await fetch(`${API_BASE_URL}/api/upload-media`, {
+            const targetServer = syncServerUrl.trim() || API_BASE_URL;
+            const res = await fetch(`${targetServer}/api/upload-media`, {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",
@@ -510,11 +492,12 @@ export default function WeChatPreview({
   };
 
   const handlePublishToWeChat = async () => {
+    console.log("[WeChatPreview] Starting handlePublishToWeChat...");
     setIsPublishing(true);
     setPublishResult(null);
 
-    // If Mode is official, perform full validation and call backend API
-    if (syncMode === "official") {
+    // If Mode is official, or credentials are provided, perform full validation and call backend API
+    if (syncMode === "official" || (publishAppId && publishAppSecret)) {
       const isServerSideConfigured = !!(serverWeChatConfig?.appIdConfigured && serverWeChatConfig?.appSecretConfigured);
 
       if (!isServerSideConfigured) {
@@ -557,6 +540,7 @@ export default function WeChatPreview({
 
       try {
         const targetServer = syncServerUrl.trim() || API_BASE_URL;
+        console.log(`[WeChatPreview] Fetching ${targetServer}/api/wechat/publish`);
         const res = await fetch(`${targetServer}/api/wechat/publish`, {
           method: "POST",
           headers: { 
@@ -573,14 +557,7 @@ export default function WeChatPreview({
             contentHtml: formattedHtml,
             coverUrl: absoluteCoverUrl,
             thumbMediaId: uploadedMediaId,
-            originalCoverUrl: absoluteCoverUrl, // For now, passing selectedCover as original, can improve later
-            croppedCoverUrl: absoluteCoverUrl, // For now, passing selectedCover as cropped, can improve later
-            originalDeclaration: declareOriginal,
-            addToCollection: addToCollect,
-            collectionId: collectId,
-            isScheduled: schedulePublish,
-            scheduledTime: schedTime,
-            publishToDraft: publishToDraft
+            originalDeclaration: declareOriginal
           })
         });
 
@@ -588,13 +565,10 @@ export default function WeChatPreview({
         if (res.ok && data.success) {
           setPublishResult({
             success: true,
-            message: `【🎉 微信公众号真实接口对接成功！】
-主线云端高强度安全隧道已建立，素材图文已经安全同步至官方草稿箱：
+            message: `【🎉 成功保存至草稿箱！】
 
 • 文章标题：${publishTitle || article.title}
-• 微信草稿ID：${data.draftId || "草稿同步成功"}
-• 原创声明：${declareOriginal ? "已启用（绿色原创标）" : "未启用"}
-• 归属专栏：${addToCollect ? "是（已归档）" : "否"}
+• 微信草稿ID：${data.draft_id}
 
 提示：草稿素材已完全按照您的视觉主题和配图策略排布完成。您可以由微信后台直接发表！`,
             data: data
@@ -631,7 +605,6 @@ export default function WeChatPreview({
 
 • 文章标题：${publishTitle || article.title}
 • 原创声明：${declareOriginal ? "已启用（绿色原创标）" : "未启用"}
-• 归属合集：${addToCollect ? "是（已归档）" : "否"}
 • 发布作者：${publishAuthor || "LEG"}
 • 同步状态：100% 格式对齐校验通过
 
@@ -1509,6 +1482,18 @@ ${article.outro}
                     <RefreshCw className={`h-3 w-3 ${isGeneratingCover ? "animate-spin" : ""}`} />
                     AI配图重绘
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                        setCropperSourceImage(getProxiedUrl(selectedCover));
+                        setIsCropperOpen(true);
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm"
+                  >
+                    <Crop className="h-3 w-3" />
+                    裁切比例
+                  </button>
                   
                   <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm">
                     <Upload className="h-3 w-3" />
@@ -2004,7 +1989,7 @@ ${article.outro}
         </div>
       </div>
 
-      {/* WeChat Official Account Sync & Publish Modal Overlay */}
+{/* WeChat Official Account Sync & Publish Modal Overlay */}
       <AnimatePresence>
         {showPublishModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
@@ -2019,62 +2004,30 @@ ${article.outro}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-emerald-700">
                     <Share2 className="h-5 w-5 font-bold" />
-                    <h3 className="text-base font-black tracking-tight text-gray-800">微信公众开放授权</h3>
+                    <h3 className="text-base font-black tracking-tight text-gray-800">微信公众开放平台设置</h3>
                   </div>
-
-                  {/* Segmented Control for Synchronization Service Mode */}
-                  <div className="space-y-1">
-                    <label className="block text-[10.5px] font-extrabold text-gray-400 uppercase tracking-wider">同步发布服务模式</label>
-                    <div className="bg-gray-200/60 p-0.5 rounded-xl flex gap-0.5 border border-gray-300/30">
-                      <button
-                        type="button"
-                        onClick={() => setSyncMode("sandbox")}
-                        className={`flex-1 text-center py-2 text-xs font-extrabold rounded-lg transition-all duration-200 cursor-pointer ${
-                          syncMode === "sandbox"
-                            ? "bg-white text-emerald-800 shadow-xs"
-                            : "text-gray-500 hover:text-gray-700 hover:bg-white/40"
-                        }`}
-                      >
-                        🛡️ 免密沙箱演示
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSyncMode("official")}
-                        className={`flex-1 text-center py-2 text-xs font-extrabold rounded-lg transition-all duration-200 cursor-pointer ${
-                          syncMode === "official"
-                            ? "bg-white text-emerald-800 shadow-xs"
-                            : "text-gray-500 hover:text-gray-700 hover:bg-white/40"
-                        }`}
-                      >
-                        📡 真实接口对接
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-gray-500 leading-relaxed">
-                    {syncMode === "sandbox" ? (
-                      <span className="text-emerald-700 block bg-emerald-50 border border-emerald-100/60 p-2.5 rounded-xl font-medium">
-                        ✨ 当前为<b>免密沙箱模式</b>：无需开发凭证、无需配置 IP 白名单，点按同步一秒内仿真模拟生成完成。方便评审与一秒免密演示。
-                      </span>
-                    ) : serverWeChatConfig?.appIdConfigured && serverWeChatConfig?.appSecretConfigured ? (
-                      <span className="text-emerald-800 block bg-emerald-50 border border-emerald-150 p-2.5 rounded-xl font-medium">
-                        ✅ <b>凭证就绪 (服务器变量配置完毕)</b>：服务器端检测到 WECHAT_APPID 环境变量已加载。本地处于高强度密钥免填模式，您可以直接拉取合集或执行同步发布。
-                      </span>
-                    ) : (
-                      <span className="text-amber-800 block bg-amber-50 border border-amber-100 p-2.5 rounded-xl font-medium">
-                        ⚠️ 运行于<b>真实接口对接模式</b>：系统将直接安全通过微信公众号官方 API 传输文章。两侧必须配置真实的 AppID 与 Secret 凭证。
-                      </span>
-                    )}
-                  </p>
 
                   <div className="space-y-3">
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
+                        <label className="block text-xs font-bold text-gray-700">微信 API 中转地址 (Base URL)</label>
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">可自定义</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={syncServerUrl}
+                        onChange={(e) => setSyncServerUrl(e.target.value)}
+                        placeholder="例如: http://legns.top:1234"
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-xl bg-white focus:outline-emerald-505 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
                         <label className="block text-xs font-bold text-gray-700">微信 AppID</label>
                         <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${
-                          serverWeChatConfig?.appIdConfigured ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : (syncMode === "official" ? "bg-red-50 text-red-600 border border-red-100 anim-pulse" : "bg-zinc-150 text-zinc-500")
+                          serverWeChatConfig?.appIdConfigured ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-red-50 text-red-600 border border-red-100"
                         }`}>
-                          {serverWeChatConfig?.appIdConfigured ? "已从服务端读取" : (syncMode === "official" ? "真实必填" : "沙箱选填")}
+                          {serverWeChatConfig?.appIdConfigured ? "已从服务端读取" : "必填"}
                         </span>
                       </div>
                       <input
@@ -2082,25 +2035,17 @@ ${article.outro}
                         value={publishAppId}
                         disabled={!!serverWeChatConfig?.appIdConfigured}
                         onChange={(e) => setPublishAppId(e.target.value)}
-                        placeholder={
-                          serverWeChatConfig?.appIdConfigured 
-                            ? `已读取服务器变量：${serverWeChatConfig.appId || "未公开"}`
-                            : (syncMode === "official" ? "请输入以 wx 开头的真实 AppID" : "任意输入 / 沙箱免敏模式...")
-                        }
-                        className={`w-full text-xs p-2.5 border rounded-xl bg-white focus:outline-emerald-505 text-gray-800 font-mono transition-all duration-200 ${
-                          serverWeChatConfig?.appIdConfigured 
-                            ? "bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200/80" 
-                            : (syncMode === "official" && !publishAppId ? "border-amber-400 bg-amber-50/10 placeholder-amber-400" : "border-gray-200")
-                        }`}
+                        placeholder="请输入微信 AppID"
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-xl bg-white focus:outline-emerald-505 font-mono"
                       />
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
                         <label className="block text-xs font-bold text-gray-700">微信 AppSecret</label>
                         <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${
-                          serverWeChatConfig?.appSecretConfigured ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : (syncMode === "official" ? "bg-red-50 text-red-600 border border-red-100 anim-pulse" : "bg-zinc-150 text-zinc-500")
+                          serverWeChatConfig?.appSecretConfigured ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-red-50 text-red-600 border border-red-100"
                         }`}>
-                          {serverWeChatConfig?.appSecretConfigured ? "已从服务端读取" : (syncMode === "official" ? "真实必填" : "沙箱选填")}
+                          {serverWeChatConfig?.appSecretConfigured ? "已从服务端读取" : "必填"}
                         </span>
                       </div>
                       <input
@@ -2108,32 +2053,8 @@ ${article.outro}
                         value={publishAppSecret}
                         disabled={!!serverWeChatConfig?.appSecretConfigured}
                         onChange={(e) => setPublishAppSecret(e.target.value)}
-                        placeholder={
-                          serverWeChatConfig?.appSecretConfigured
-                            ? "微信密钥已由服务器安全锁定，受保护运行中"
-                            : (syncMode === "official" ? "请输入公众号的秘钥 AppSecret" : "任意输入 / 沙箱免敏模式...")
-                        }
-                        className={`w-full text-xs p-2.5 border rounded-xl bg-white focus:outline-emerald-505 text-gray-850 font-mono transition-all duration-200 ${
-                          serverWeChatConfig?.appSecretConfigured
-                            ? "bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200/80"
-                            : (syncMode === "official" && !publishAppSecret ? "border-amber-400 bg-amber-50/10 placeholder-amber-400" : "border-gray-200")
-                        }`}
-                      />
-                    </div>
-                    {/* Sync Middle tier Server URL */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <label className="block text-xs font-bold text-gray-700">中转服务器地址 (API Server)</label>
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100/60 px-1.5 py-0.5 rounded-full">
-                          {syncServerUrl.trim() ? "自定义中" : "留空默认本地"}
-                        </span>
-                      </div>
-                      <input
-                        type="text"
-                        value={syncServerUrl}
-                        onChange={(e) => setSyncServerUrl(e.target.value)}
-                        placeholder="例：http://www.legns.top:1234 (留空默认本地)"
-                        className="w-full text-xs p-2.5 border border-gray-200 rounded-xl bg-white focus:outline-emerald-505 text-gray-800 font-mono transition-all duration-200"
+                        placeholder="请输入微信 AppSecret"
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-xl bg-white focus:outline-emerald-505 font-mono"
                       />
                     </div>
                   </div>
@@ -2144,170 +2065,76 @@ ${article.outro}
                       <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
                         🛡️ 微信专属 IP 白名单:
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          let ipCopied = false;
-                          try {
-                            if (navigator.clipboard?.writeText) {
-                              navigator.clipboard.writeText(serverPublicIp);
-                              ipCopied = true;
-                            }
-                          } catch (e) {
-                            console.warn("Clipboard API failed for IP, falling back to textarea", e);
-                          }
-
-                          if (!ipCopied) {
-                            try {
-                              const textArea = document.createElement("textarea");
-                              textArea.value = serverPublicIp;
-                              textArea.style.position = "fixed";
-                              textArea.style.left = "-9999px";
-                              textArea.style.opacity = "0.01";
-                              document.body.appendChild(textArea);
-                              textArea.focus();
-                              textArea.select();
-                              document.execCommand("copy");
-                              document.body.removeChild(textArea);
-                              ipCopied = true;
-                            } catch (err) {
-                              console.error("IP copy absolutely failed", err);
-                            }
-                          }
-                          alert(`复制成功！请登录公众号后台填入「基本配置」->「IP白名单」中。\nIP: ${serverPublicIp}`);
-                        }}
-                        className="text-[10px] font-extrabold text-emerald-600 hover:text-emerald-700 underline"
-                      >
-                        双击复制
-                      </button>
                     </div>
-                    <div className="text-center font-mono text-xs font-bold bg-white text-emerald-900 py-1.5 px-3 border border-emerald-100 rounded-xl select-all shadow-3xs tracking-wide">
+                    <div className="text-center font-mono text-xs font-bold bg-white text-emerald-900 py-1.5 px-3 border border-emerald-100 rounded-xl select-all tracking-wide">
                       {serverPublicIp}
                     </div>
-                    <p className="text-[10px] text-emerald-600/80 leading-normal">
-                      💡 微信对 API 调用具备高强度防御体系。若执行一键发布时提示 IP 验证错误，请登录公众号后台填入此服务器出口 IP 地址。
-                    </p>
                   </div>
                 </div>
 
                 <div className="text-[10px] text-gray-400 mt-6 pt-3 border-t border-gray-200/50 flex items-center justify-between">
-                  <span>SSL 指纹安全多向加密传送</span>
-                  <span className="text-emerald-600 font-bold">微信官方接口对接</span>
+                  <span>SSL 安全加密</span>
+                  <span className="text-emerald-600 font-bold">微信 API</span>
                 </div>
               </div>
 
-              {/* Right Content Panel - Configured with overscroll containment */}
+              {/* Right Content Panel */}
               <div 
-                className="md:w-7/12 p-6 flex flex-col justify-between overflow-y-auto"
-                style={{ overscrollBehavior: "contain" }}
+                className="md:w-7/12 flex flex-col h-full bg-white overflow-hidden"
               >
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                    <div>
-                      <h3 className="text-base font-black tracking-tight text-gray-900 font-sans">
-                        微信一键同步助手
-                      </h3>
-                      <p className="text-[10px] text-gray-400 mt-0.5">一键群发或暂存、素材直传、原创自检、草稿跨期备份</p>
+                  {/* Header */}
+                  <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                    <h3 className="text-base font-black tracking-tight text-gray-900 font-sans">
+                      微信发布助手
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPublishModal(false);
+                          setPublishResult(null);
+                        }}
+                        className="px-4 py-2 border border-gray-200 text-gray-600 hover:text-gray-800 rounded-xl text-xs font-bold transition"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePublishToWeChat}
+                        disabled={isPublishing}
+                        className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-xs active:scale-98 disabled:opacity-50"
+                      >
+                        {isPublishing ? (
+                          <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> 保存中...</>
+                        ) : (
+                          "确认保存至草稿箱"
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setShowPublishModal(false)}
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition"
+                      >
+                        ✕
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        setShowPublishModal(false);
-                        setPublishResult(null);
-                      }}
-                      className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition"
-                    >
-                      ✕
-                    </button>
                   </div>
 
-                  {/* Tab Navigation Bars */}
-                  <div className="flex border-b border-gray-100 select-none pb-1">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("publish")}
-                      className={`flex-1 py-2 text-xs font-bold text-center transition-all border-b-2 ${
-                        activeTab === "publish"
-                          ? "text-emerald-700 border-emerald-600 bg-emerald-50/20"
-                          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50/40 border-transparent"
-                      }`}
-                    >
-                      ✍️ 填写图文发布参数
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("drafts")}
-                      className={`flex-1 py-2 text-xs font-bold text-center transition-all border-b-2 flex items-center justify-center gap-1.5 ${
-                        activeTab === "drafts"
-                          ? "text-emerald-700 border-emerald-600 bg-emerald-50/20"
-                          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50/40 border-transparent"
-                      }`}
-                    >
-                      🗄️ 本地备用草稿箱
-                      {localDrafts.length > 0 && (
-                        <span className="bg-emerald-650 text-white text-[9px] px-1.5 py-0.5 rounded-full font-mono font-black scale-90">
-                          {localDrafts.length}
-                        </span>
-                      )}
-                    </button>
-                  </div>
-
-                  {draftSaveSuccess && (
-                    <div className="p-2.5 bg-emerald-50 text-emerald-800 text-xs rounded-xl font-medium border border-emerald-100 text-center animate-pulse-subtle">
-                      {draftSaveSuccess}
-                    </div>
-                  )}
-
-                  {activeTab === "publish" ? (
-                    /* Active Tab A: Publisher configuration */
-                    <div className="space-y-3.5">
+                  {/* Scrollable Form Content */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* Basic Settings */}
+                    <div className="space-y-4">
                       <div className="space-y-1">
-                        <div className="flex justify-between items-center">
-                          <label className="block text-xs font-bold text-gray-700">✍️ 微信公众号标题</label>
-                          <span className="text-[10px] text-gray-400 font-medium">{publishTitle.length} 字 (推荐 15-32 字)</span>
-                        </div>
+                        <label className="block text-xs font-bold text-gray-700">✍️ 微信公众号标题</label>
                         <input
                           type="text"
                           value={publishTitle}
                           onChange={(e) => setPublishTitle(e.target.value)}
                           placeholder="请输入微信头条图文标题..."
-                          className="w-full text-xs p-2.5 border border-gray-200 rounded-xl font-bold text-gray-800 focus:outline-emerald-500"
+                          className="w-full text-xs p-3 border border-gray-200 rounded-xl font-bold text-gray-800 focus:outline-emerald-500"
                         />
-
-                        {/* High-Traffic Title Formula Interactive Assistant */}
-                        <div className="mt-2.5 p-3 bg-emerald-50/45 border border-emerald-100/70 rounded-2xl space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-black text-emerald-800 flex items-center gap-1">
-                              🔥 专属公众号爆款高流量标题建议列表：
-                            </span>
-                            <span className="text-[9px] text-emerald-600 font-bold bg-emerald-100/50 px-1.5 py-0.5 rounded-sm animate-pulse-subtle">
-                              点击一键应用
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {getSuggestedTitles().map((s) => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                onClick={() => setPublishTitle(s.title)}
-                                className="text-[10px] p-2.5 text-left bg-white border border-gray-100 hover:border-emerald-350 hover:bg-emerald-50/10 text-gray-700 hover:text-emerald-950 rounded-xl transition-all duration-200 shadow-3xs hover:shadow-2xs leading-relaxed flex flex-col justify-between group active:scale-97 cursor-pointer"
-                                title="点击为此发布设置此标题"
-                              >
-                                <span className="text-[8px] text-emerald-650 font-black mb-1 group-hover:text-emerald-700 transition">
-                                  {s.label}
-                                </span>
-                                <span className="line-clamp-2 w-full font-bold text-gray-750">
-                                  {s.title}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                          <p className="text-[9px] text-emerald-650/90 leading-tight">
-                            💡 <b>优质流量口径：</b>高点击爆文核心在于具有<b>平等的同爱好同伴交流感</b>与<b>痛点指向括号标</b>（例如《【同好避坑】咱们第一套怎么挑...》），全面展现诚恳平等的交流语境，引起深层共鸣！
-                          </p>
-                        </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <label className="block text-xs font-bold text-gray-700">👤 署名作者</label>
                           <input
@@ -2315,640 +2142,101 @@ ${article.outro}
                             value={publishAuthor}
                             onChange={(e) => setPublishAuthor(e.target.value)}
                             placeholder="作者笔名..."
-                            className="w-full text-xs p-2.5 border border-gray-200 rounded-xl text-gray-800 font-medium focus:outline-emerald-500"
+                            className="w-full text-xs p-3 border border-gray-200 rounded-xl text-gray-800 font-medium focus:outline-emerald-500"
                           />
                         </div>
-                        <div className="space-y-1">
-                          <label className="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                            🛡️ 原创声明
+                        <div className="space-y-1 flex items-center pt-5">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={declareOriginal}
+                              onChange={(e) => setDeclareOriginal(e.target.checked)}
+                              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                            />
+                            <span className="text-xs font-semibold text-gray-600">声明文字原创</span>
                           </label>
-                          <div className="flex items-center h-10 pl-1">
-                            <label className="flex items-center gap-2 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={declareOriginal}
-                                onChange={(e) => setDeclareOriginal(e.target.checked)}
-                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                              />
-                              <span className="text-xs font-semibold text-gray-600">声明文字原创</span>
-                            </label>
-                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <label className="block text-xs font-bold text-gray-700">🖼️ 封面图片</label>
+                        <div className="relative rounded-xl overflow-hidden border-2 border-gray-200 aspect-video group">
+                            <img
+                              src={getProxiedUrl(selectedCover || coverUrl)}
+                              className="w-full h-full object-cover"
+                              alt="封面"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    onChange={handleLocalCoverUpload}
+                                    className="hidden"
+                                    accept="image/*"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="bg-gray-800 hover:bg-gray-900 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm"
+                                >
+                                    <Upload className="h-3 w-3" />
+                                    上传
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCropperSourceImage(getProxiedUrl(selectedCover || coverUrl));
+                                        setIsCropperOpen(true);
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm"
+                                >
+                                    <Crop className="h-3 w-3" />
+                                    裁切
+                                </button>
+                            </div>
                         </div>
                       </div>
 
                       <div className="space-y-1">
-                        <div className="flex justify-between items-center">
-                          <label className="block text-xs font-bold text-gray-700">📝 图文群发摘要 (Subtitle)</label>
-                          <span className="text-[10px] text-gray-400 font-sans">{publishDigest.length}/120 字</span>
-                        </div>
+                        <label className="block text-xs font-bold text-gray-700">📝 图文群发摘要</label>
                         <textarea
                           value={publishDigest}
                           onChange={(e) => setPublishDigest(e.target.value.slice(0, 120))}
                           rows={2}
-                          placeholder="简明扼要的一两句前言，将作为消息列表摘要卡片展示..."
-                          className="w-full text-xs p-2.5 border border-gray-200 rounded-xl text-gray-700 leading-relaxed focus:outline-emerald-500"
+                          placeholder="前言..."
+                          className="w-full text-xs p-3 border border-gray-200 rounded-xl text-gray-700 leading-relaxed focus:outline-emerald-500"
                         />
                       </div>
-
-                      {/* Cover Grid Selector */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <label className="block text-xs font-bold text-gray-700">🖼️ 封面图片选择（支持本地照片上传或选用以下文章配图）</label>
-                          <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded-sm">支持本地文件</span>
-                        </div>
-                        
-                        {/* Hidden File Input for Native Local Cover Uplader */}
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          onChange={handleLocalCoverUpload}
-                          accept="image/*"
-                          className="hidden"
-                        />
-
-                        <div className="grid grid-cols-4 gap-2">
-                          {/* Option 0: Upload New Local Picture Button */}
-                          <div
-                            onClick={() => fileInputRef.current?.click()}
-                            className="relative rounded-xl overflow-hidden border-2 border-dashed border-gray-300 hover:border-emerald-500 cursor-pointer aspect-video transition-all shadow-3xs flex flex-col items-center justify-center bg-slate-50 hover:bg-emerald-50/10"
-                          >
-                            <div className="flex flex-col items-center justify-center p-1 text-center">
-                              <Upload className="h-4 w-4 text-emerald-600 mb-0.5 animate-pulse" />
-                              <span className="text-[9px] text-gray-500 font-bold">上传本地原图</span>
-                            </div>
-                            <div className="absolute inset-x-0 bottom-0 bg-slate-200 text-[7.5px] text-gray-600 py-0.5 text-center truncate font-extrabold">
-                              置入并启动裁切
-                            </div>
-                          </div>
-
-                          {/* Option 0.5: Active Cropped Local Cover (Displays if selectedCover is base64) */}
-                          {selectedCover && selectedCover.startsWith("data:") && (
-                            <div
-                              onClick={() => setSelectedCover(selectedCover)}
-                              className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs group border-emerald-500 ring-3 ring-emerald-500/20 scale-102`}
-                            >
-                              <img
-                                src={selectedCover}
-                                className="w-full h-full object-cover"
-                                alt="本地已裁切封面"
-                              />
-                              <div className="absolute inset-x-0 bottom-0 bg-emerald-600/95 text-[8.5px] text-white py-0.5 text-center truncate font-black">
-                                本地已裁切使用
-                              </div>
-                              {/* Re-crop trigger */}
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCropperSourceImage(selectedCover);
-                                    setIsCropperOpen(true);
-                                  }}
-                                  className="p-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-bold transition flex items-center gap-1 shadow-sm"
-                                >
-                                  <Crop className="h-2.5 w-2.5" />
-                                  重新裁切
-                                </button>
-                              </div>
-                              <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs">
-                                <Check className="h-2 w-2 font-bold" />
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Option 1: AI Main Cover */}
-                          <div
-                            onClick={() => setSelectedCover(useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl)}
-                            className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs group ${
-                              selectedCover === (useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl)
-                                ? "border-emerald-500 ring-3 ring-emerald-500/20 scale-102 opacity-100"
-                                : "border-gray-200 opacity-70 hover:opacity-100"
-                            }`}
-                          >
-                            <img
-                              src={getProxiedUrl(useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl)}
-                              className="w-full h-full object-cover"
-                              alt="首推主海报"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[8px] text-white py-0.5 text-center truncate font-bold">主配图/原图</div>
-                            
-                            {/* Crop tool trigger */}
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const rawImg = useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl;
-                                  setCropperSourceImage(getProxiedUrl(rawImg));
-                                  setIsCropperOpen(true);
-                                }}
-                                className="p-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-bold transition flex items-center gap-1 shadow-sm"
-                              >
-                                <Crop className="h-2.5 w-2.5" />
-                                裁切比例
-                              </button>
-                            </div>
-
-                            {selectedCover === (useVectorGraphics ? (coverIllustrationUrl || coverUrl) : coverUrl) && (
-                              <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs">
-                                <Check className="h-2 w-2 font-bold" />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Options 2+: Section illustrations inside article list */}
-                          {article.sections.map((sec) => {
-                            const currentSecImg = useVectorGraphics ? sectionIllustrations[sec.id] : sectionImages[sec.id];
-                            if (!currentSecImg) return null;
-                            const isSel = selectedCover === currentSecImg;
-                            return (
-                              <div
-                                key={sec.id}
-                                onClick={() => setSelectedCover(currentSecImg)}
-                                className={`relative rounded-xl overflow-hidden border-2 cursor-pointer aspect-video transition-all shadow-3xs group ${
-                                  isSel
-                                    ? "border-emerald-500 ring-3 ring-emerald-500/20 scale-102 opacity-100"
-                                    : "border-gray-200 opacity-70 hover:opacity-100"
-                                }`}
-                              >
-                                <img
-                                  src={getProxiedUrl(currentSecImg)}
-                                  className="w-full h-full object-cover"
-                                  alt={sec.title}
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[8px] text-white py-0.5 text-center truncate font-bold">
-                                  {sec.title.substring(0, 4)}配图
-                                </div>
-
-                                {/* Crop tool trigger */}
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setCropperSourceImage(getProxiedUrl(currentSecImg));
-                                      setIsCropperOpen(true);
-                                    }}
-                                    className="p-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-bold transition flex items-center gap-1 shadow-sm"
-                                  >
-                                    <Crop className="h-2.5 w-2.5" />
-                                    裁切比例
-                                  </button>
-                                </div>
-
-                                {isSel && (
-                                  <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full shadow-xs">
-                                    <Check className="h-2 w-2 font-bold" />
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* 2.3 Preserved Original Graphics / Stickers Box */}
-                      <div className="space-y-2 mt-3 p-4 bg-slate-50 border border-gray-150 rounded-2xl select-none">
-                        <div className="flex justify-between items-center bg-slate-100/40 p-2.5 rounded-xl border border-slate-200/50">
-                          <div className="text-left">
-                            <span className="text-xs font-black text-gray-800 flex items-center gap-1.5">
-                              📦 历史已上传原图（备用贴图/插图区）
-                            </span>
-                            <span className="text-[10px] text-gray-500 block mt-0.5 font-medium leading-relaxed">
-                              您每次在此处上传的封面原件，无需任何剪裁即存放在此，方便后续提取用作贴图。
-                            </span>
-                          </div>
-                          {/* Direct sticker uploader button */}
-                          <label className="shrink-0 cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm select-none">
-                            <Upload className="h-3 w-3" />
-                            存入原图
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                if (file.size > 10 * 1024 * 1024) {
-                                  alert("原图大小请在 10MB 以内以适配本地存储缓存。");
-                                  return;
-                                }
-                                const reader = new FileReader();
-                                reader.onload = (v) => {
-                                  const base64Str = v.target?.result as string;
-                                  const sizeKb = Math.round(file.size / 1024);
-                                  const newSticker: UploadedSticker = {
-                                    id: String(Date.now()),
-                                    name: file.name,
-                                    url: base64Str,
-                                    size: `${sizeKb} KB`,
-                                    addedAt: new Date().toLocaleTimeString("zh-CN", { hour: '2-digit', minute: '2-digit' })
-                                  };
-                                  setUploadedStickers(prev => [newSticker, ...prev]);
-                                };
-                                reader.readAsDataURL(file);
-                                e.target.value = "";
-                              }}
-                            />
-                          </label>
-                        </div>
-
-                        {uploadedStickers.length === 0 ? (
-                          <div className="p-4 border border-dashed border-gray-200 bg-white/70 rounded-xl text-center text-xs text-slate-400 font-bold leading-relaxed">
-                            暂无暂存原图。每次上传本地封面或点击上面的 “存入原图” 时，高清原尺寸文件都会在此就地暂存。
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-2 max-h-[190px] overflow-y-auto pr-1 bg-white p-2.5 rounded-xl border border-gray-250">
-                            {uploadedStickers.map((st, idx) => {
-                              const isCurrentSelected = selectedCover === st.url;
-                              return (
-                                <div key={st.id} className="flex items-center justify-between gap-3 p-2 bg-slate-50/70 rounded-lg border border-gray-100 shadow-3xs hover:border-emerald-300 transition duration-150">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <img src={st.url} className="w-10 h-10 rounded-md object-cover bg-slate-100 border border-gray-200 shrink-0" />
-                                    <div className="text-left min-w-0">
-                                      <p className="text-xs font-bold text-gray-800 truncate" title={st.name}>
-                                        {idx + 1}. {st.name || "本地原图备件"}
-                                      </p>
-                                      <span className="text-[9.5px] text-gray-450 font-bold block">
-                                        大小: {st.size} • 导入于: {st.addedAt}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    {/* Copy base64 option */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        try {
-                                          navigator.clipboard.writeText(st.url);
-                                          alert("🎉 高清原图 Base64 编码已成功复制！可以直接在公众号群发贴图中使用。");
-                                        } catch (err) {
-                                          const el = document.createElement("textarea");
-                                          el.value = st.url;
-                                          document.body.appendChild(el);
-                                          el.select();
-                                          document.execCommand("copy");
-                                          document.body.removeChild(el);
-                                          alert("🎉 高清原图 Base64 编码已强力拷贝至系统剪切版！");
-                                        }
-                                      }}
-                                      className="px-2 py-1 text-[10px] font-black bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md transition"
-                                    >
-                                      复制发贴图
-                                    </button>
-
-                                    {/* Crop on top of this sticker */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setCropperSourceImage(st.url);
-                                        setIsCropperOpen(true);
-                                      }}
-                                      className="px-2 py-1 text-[10px] font-black bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-md transition flex items-center gap-0.5"
-                                    >
-                                      <Crop className="h-3 w-3" />
-                                      载入裁切
-                                    </button>
-
-                                    {/* Apply as cover */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedCover(st.url);
-                                      }}
-                                      className={`px-2 py-1 text-[10px] font-black rounded-md transition ${
-                                        isCurrentSelected 
-                                          ? "bg-emerald-600 text-white" 
-                                          : "bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200/50"
-                                      }`}
-                                    >
-                                      {isCurrentSelected ? "当前已选" : "作为封面"}
-                                    </button>
-
-                                    {/* Delete sticker */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setUploadedStickers(prev => prev.filter(item => item.id !== st.id));
-                                      }}
-                                      className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition"
-                                      title="删除原图缓存"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                            <div className="flex justify-between items-center pt-1 px-1">
-                              <span className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
-                                💡 原图像保存在浏览器端运行空间，清空不会影响当前已生成文章。
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                    if (confirm("提示：确定要清空暂存的所有高清原图吗？这会立刻释放本地存储。")) {
-                                      setUploadedStickers([]);
-                                    }
-                                }}
-                                className="text-[10px] text-red-500 hover:text-red-700 font-bold hover:underline transition"
-                              >
-                                🗑️ 全部清空
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-
-                      {/* Draft Box vs Formal Publish selection */}
-                      <div className="p-3 bg-emerald-50/25 border border-emerald-100 rounded-2xl flex items-center justify-between select-none font-sans">
-                        <div className="flex items-center gap-3">
-                          <input
-                            id="publish_to_draft_checkbox"
-                            type="checkbox"
-                            checked={publishToDraft}
-                            onChange={(e) => setPublishToDraft(e.target.checked)}
-                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4.5 w-4.5 cursor-pointer"
-                          />
-                          <label htmlFor="publish_to_draft_checkbox" className="text-left cursor-pointer">
-                            <span className="text-xs font-bold text-gray-800 flex items-center gap-1">
-                              🗂️ 仅保存至微信公众号草稿箱 (不勾选则同步并【一键正式发表】)
-                            </span>
-                            <span className="text-[10px] text-gray-450 block mt-0.5">
-                              勾选后：文章作为草稿暂存，粉丝不可见；未勾选：直接发表并生成正式访问链接。
-                            </span>
-                          </label>
-                        </div>
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-sm shrink-0 transition-all border ${
-                          publishToDraft 
-                            ? "bg-slate-100 text-slate-700 border-slate-200" 
-                            : "bg-emerald-100 text-emerald-800 border-emerald-250 animate-pulse-subtle"
-                        }`}>
-                          {publishToDraft ? "仅存草稿" : "正式发表"}
-                        </span>
-                      </div>
-
-                      {/* Advanced controls */}
-                      <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
-                        {/* Album/Collection Option */}
-                        <div className="p-2.5 bg-slate-50/70 rounded-2xl space-y-2">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={addToCollect}
-                              onChange={(e) => setAddToCollect(e.target.checked)}
-                              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
-                            />
-                            <span className="text-xs font-bold text-gray-700">添加到合集专栏</span>
-                          </label>
-
-                          {addToCollect && (
-                            <div className="space-y-2 mt-1.5 border-t border-slate-200/50 pt-2 text-left">
-                              {/* Sync from WeChat button */}
-                              <button
-                                type="button"
-                                onClick={handleFetchCollections}
-                                disabled={fetchingAlbums}
-                                className="w-full text-[9.5px] py-1.5 bg-white hover:bg-emerald-50 hover:text-emerald-800 text-emerald-700 font-black border border-emerald-200 rounded-lg shadow-4xs transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-                              >
-                                {fetchingAlbums ? (
-                                  <>
-                                    <RefreshCw className="h-3 w-3 animate-spin text-emerald-600" />
-                                    请求公众号接口中...
-                                  </>
-                                ) : (
-                                  <>
-                                    📡 实时获取当前公众号合集列表
-                                  </>
-                                )}
-                              </button>
-
-                              {albumFetchError && (
-                                <p className="text-[9px] text-red-500 bg-red-50/40 border border-red-100 p-1.5 rounded-md leading-relaxed">
-                                  ⚠️ {albumFetchError}
-                                </p>
-                              )}
-
-                              {fetchedAlbums && fetchedAlbums.length > 0 ? (
-                                <div className="space-y-1">
-                                  <label className="block text-[8.5px] font-black text-emerald-800">已检索出合集专栏 (下拉选择):</label>
-                                  <select
-                                    value={collectId}
-                                    onChange={(e) => setCollectId(e.target.value)}
-                                    className="w-full text-[10px] p-2 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-emerald-500 font-bold"
-                                  >
-                                    {fetchedAlbums.map((alb) => (
-                                      <option key={alb.album_id} value={String(alb.album_id)}>
-                                        📁 {alb.album_info?.title} (ID: {alb.album_id})
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              ) : (
-                                <div className="space-y-1">
-                                  <label className="block text-[9px] font-bold text-gray-500">微信合集 ID (手动输入):</label>
-                                  <input
-                                    type="text"
-                                    value={collectId}
-                                    onChange={(e) => setCollectId(e.target.value)}
-                                    placeholder="请输入合集 ID (如: 12456)"
-                                    className="w-full text-[10px] p-2 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-emerald-550 font-mono"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Scheduled option */}
-                        <div className="p-2.5 bg-slate-50/70 rounded-2xl space-y-2">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={schedulePublish}
-                              onChange={(e) => setSchedulePublish(e.target.checked)}
-                              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
-                            />
-                            <span className="text-xs font-bold text-gray-700">定时/预约发布</span>
-                          </label>
-                          {schedulePublish && (
-                            <input
-                              type="datetime-local"
-                              value={schedTime}
-                              onChange={(e) => setSchedTime(e.target.value)}
-                              className="w-full text-[10px] p-2 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-emerald-500 text-center font-bold"
-                            />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Save Backup Button inside Publish settings */}
-                      <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-dashed border-gray-200 font-sans">
-                        <span className="text-[10px] text-gray-500 font-medium">⚠️ 担心内容丢失？您可随时一键存至本地备份箱！</span>
-                        <button
-                          type="button"
-                          onClick={handleSaveToLocalDrafts}
-                          className="text-[10px] font-extrabold bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 py-1 px-2.5 rounded-lg transition active:scale-97 cursor-pointer flex items-center gap-1 shadow-3xs"
-                        >
-                          💾 新增本地备份
-                        </button>
-                      </div>
-
                     </div>
-                  ) : (
-                    /* Active Tab B: Grassroots Local Draft Box */
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-gray-100/50">
-                        <div className="space-y-0.5 text-left">
-                          <h4 className="text-xs font-black text-gray-800">💾 直接备份当前工作区状态</h4>
-                          <p className="text-[9.5px] text-gray-400">将您正在修改的文章内容与配置完好储存在浏览器会话沙箱中。</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleSaveToLocalDrafts}
-                          className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1.5 px-3 rounded-xl transition shadow-3xs active:scale-97 cursor-pointer flex items-center gap-1"
-                        >
-                          💾 备份当前
-                        </button>
-                      </div>
+                  </div>
 
-                      <div 
-                        className="space-y-2.5 max-h-[42vh] overflow-y-auto pr-1"
-                        style={{ overscrollBehavior: "contain" }}
-                      >
-                        {localDrafts.length === 0 ? (
-                          <div className="text-center py-14 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200 space-y-2">
-                            <span className="text-2xl block text-gray-400 select-none">🗄️</span>
-                            <h5 className="text-xs font-bold text-gray-400">本地草稿箱为空</h5>
-                            <p className="text-[10px] text-gray-400 max-w-xs mx-auto px-4 leading-relaxed">
-                              本章备份草稿属于浏览器离线沙盘，可完美保存您的编辑大纲、配图、标题设定，即使重新打开页面也可以在这里随时载入一键恢复！
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            {localDrafts.map((d) => (
-                              <div
-                                key={d.id}
-                                onClick={() => handleLoadLocalDraft(d)}
-                                className="group flex gap-3 p-2.5 bg-white border border-gray-200 hover:border-emerald-350 hover:bg-emerald-50/5 rounded-2xl shadow-4xs cursor-pointer transition relative items-center text-left"
-                                title="点击载入此草稿到编辑区"
-                              >
-                                {/* Cover image of the draft */}
-                                <div className="w-14 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-slate-100 border border-gray-100 shadow-4xs">
-                                  <img 
-                                    src={d.cover && d.cover.startsWith("data:") ? d.cover : getProxiedUrl(d.cover)} 
-                                    className="w-full h-full object-cover" 
-                                    alt="封面" 
-                                    referrerPolicy="no-referrer" 
-                                  />
-                                </div>
 
-                                {/* Content Details */}
-                                <div className="flex-1 min-w-0 space-y-0.5">
-                                  <h5 className="text-xs font-black text-gray-800 truncate group-hover:text-emerald-700 transition">
-                                    {d.title || "未命名草稿"}
-                                  </h5>
-                                  <p className="text-[9px] text-gray-400 truncate leading-relaxed">
-                                    {d.subtitle || "无文章摘要"}
-                                  </p>
-                                  <div className="flex items-center gap-1.5 text-[8px] text-gray-400 font-medium">
-                                    <span className="bg-slate-100 text-gray-500 font-bold px-1 rounded-sm">
-                                      👤 {d.author || "无作者"}
-                                    </span>
-                                    <span>•</span>
-                                    <span>📅 {d.savedAt}</span>
-                                  </div>
-                                </div>
-
-                                {/* Controls overlay */}
-                                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleLoadLocalDraft(d)}
-                                    className="text-[9px] bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 border border-emerald-200 hover:border-emerald-600 py-1 px-2.5 rounded-lg font-black transition active:scale-95 cursor-pointer"
-                                  >
-                                    恢复载入
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleDeleteLocalDraft(d.id, e)}
-                                    className="text-gray-400 hover:text-red-650 p-1.5 rounded-lg hover:bg-red-50/50 transition cursor-pointer"
-                                    title="清除此草稿"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                </div>
+              </div>
 
                 {/* Submit actions / notifications */}
-                <div className="space-y-3 mt-4 pt-3 border-t border-gray-100">
+                <div className="absolute top-4 left-6 right-6 z-50">
                   {publishResult && (
                     <div
-                      className={`p-3 rounded-2xl text-xs flex gap-2.5 items-start leading-relaxed ${
+                      className={`p-3 rounded-lg text-xs flex gap-2 items-center shadow-lg border ${
                         publishResult.success
-                          ? "bg-emerald-50 border border-emerald-150 text-emerald-800"
-                          : "bg-red-50 border border-red-155 text-red-850"
+                          ? "bg-white border-emerald-200 text-emerald-800"
+                          : "bg-white border-red-200 text-red-800"
                       }`}
                     >
-                      <span className="text-lg">{publishResult.success ? "🎉" : "⚠️"}</span>
-                      <div className="space-y-1 flex-1">
-                        <p className="font-bold">{publishResult.success ? "成功发布到草稿箱！" : "发布通道出错"}</p>
-                        <p className="text-[11px] opacity-90">{publishResult.message}</p>
-                        {publishResult.success && publishResult.data && (
-                          <div className="text-[10px] bg-emerald-100/40 p-2 rounded-lg border border-emerald-200/50 mt-1.5 space-y-1 font-mono">
-                            <div>Draft MediaID: <span className="font-bold text-emerald-950 select-all">{publishResult.data.mediaId}</span></div>
-                            {publishResult.data.collectionStatus && <div>合集关联状态: {publishResult.data.collectionStatus}</div>}
-                            <div>发布部署日程: {publishResult.data.publishingSchedule}</div>
-                            {declareOriginal && <div>原创保护状态: ✅ 已申请微信原创保护</div>}
-                          </div>
-                        )}
+                      <span className="text-base shrink-0">{publishResult.success ? "🎉" : "⚠️"}</span>
+                      <div className="flex-1 overflow-hidden">
+                        <p className="font-bold truncate">{publishResult.success ? "保存成功" : "保存失败"}</p>
                       </div>
+                      <button 
+                        onClick={() => setPublishResult(null)}
+                        className="shrink-0 hover:opacity-75"
+                      >
+                        ✕
+                      </button>
                     </div>
                   )}
-
-                  <div className="flex justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPublishModal(false);
-                        setPublishResult(null);
-                      }}
-                      className="px-4 py-2 border border-gray-200 text-gray-600 hover:text-gray-800 rounded-xl text-xs font-bold transition"
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handlePublishToWeChat}
-                      disabled={isPublishing}
-                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-xs bg-linear-to-b active:scale-98 disabled:opacity-50"
-                    >
-                      {isPublishing ? (
-                        <>
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                          {publishToDraft ? "正在保存到草稿箱..." : "正在同步并一键发表..."}
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
-                          {publishToDraft ? "确认仅保存至草稿箱" : "确认一键同步并正式发表"}
-                        </>
-                      )}
-                    </button>
-                  </div>
                 </div>
-              </div>
 
             </motion.div>
           </div>

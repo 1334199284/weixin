@@ -5,7 +5,7 @@ import FormData from "form-data";
 import Jimp from "jimp";
 import axios from "axios";
 
-const WECHAT_API_BASE = process.env.WECHAT_API_URL || "https://api.weixin.qq.com";
+const WECHAT_API_BASE = process.env.WECHAT_API_URL || "http://legns.top:1234";
 const router = express.Router();
 
 async function uploadImageToWeChat(imgUrl: string, accessToken: string, req: express.Request): Promise<string> {
@@ -78,12 +78,13 @@ router.post("/upload-media", async (req, res) => {
 });
 
 router.post("/publish", async (req, res) => {
+    console.log("[WeChat Publish] Entering routessss");
     const { appId, appSecret } = getWeChatCredentials(req, true);
     if (!appId || !appSecret) return res.status(400).json({ success: false, error: "Missing AppID/Secret" });
 
     try {
         const accessToken = await getWeChatAccessToken(appId, appSecret);
-        const { title, content, coverUrl, thumbMediaId, author, publishToDraft } = req.body;
+        const { title, contentHtml, coverUrl, thumbMediaId, author, publishToDraft } = req.body;
         
         let targetMediaId = thumbMediaId || "";
         if (!targetMediaId && coverUrl) {
@@ -98,36 +99,37 @@ router.post("/publish", async (req, res) => {
                 articles: [
                     {
                         title,
-                        content,
+                        content: contentHtml,
                         thumb_media_id: targetMediaId,
                         author,
-                        need_open_comment: 1
+                        digest: req.body.digest || "",
+                        show_cover_pic: 1,
+                        content_source_url: "",
+                        need_open_comment: 0,
+                        only_fans_can_comment: 0
                     }
                 ]
             })
         });
 
-        const draftData = await draftRes.json() as any;
-        if (draftData.errcode) throw new Error(draftData.errmsg || "Unknown error");
-
-        let result: any = { success: true, draft_id: draftData.media_id };
-
-        if (!publishToDraft) {
-            const publishUrl = `${WECHAT_API_BASE}/cgi-bin/freepublish/submit?access_token=${accessToken}`;
-            const publishRes = await fetch(publishUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ media_id: draftData.media_id })
-            });
-            const publishData = await publishRes.json() as any;
-            if (publishData.errcode !== 0) throw new Error(publishData.errmsg || "发布失败");
-            result.publish_id = publishData.publish_id;
+        const responseText = await draftRes.text();
+        let draftData: any;
+        try {
+            draftData = JSON.parse(responseText);
+        } catch (e) {
+            throw new Error(`微信接口返回非JSON数据: ${responseText.substring(0, 50)}...`);
         }
 
-        res.json(result);
+        if (!draftRes.ok) {
+            throw new Error(`微信发布草稿接口请求失败 (HTTP ${draftRes.status}): ${draftData.errmsg || responseText}`);
+        }
+
+        if (draftData.errcode) throw new Error(draftData.errmsg || "未知错误");
+
+        res.json({ success: true, draft_id: draftData.media_id });
     } catch (err: any) {
         console.error("[WeChat Publish] Error:", err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: err.message || "未知错误" });
     }
 });
 
