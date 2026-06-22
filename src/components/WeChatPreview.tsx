@@ -202,7 +202,7 @@ export default function WeChatPreview({
     fetchServerWeChatConfig();
   }, []);
 
-  const [syncMode, setSyncMode] = useState<"sandbox" | "official">("sandbox");
+  const [syncMode, setSyncMode] = useState<"sandbox" | "official">("official");
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
 
