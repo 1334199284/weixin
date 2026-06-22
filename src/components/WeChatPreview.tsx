@@ -352,7 +352,11 @@ export default function WeChatPreview({
                 headers: { 
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({ imgUrl: base64Str })
+                body: JSON.stringify({ 
+                    imgUrl: base64Str,
+                    appId: publishAppId,
+                    appSecret: publishAppSecret
+                })
             });
 
             const data = await res.json();
@@ -549,7 +553,9 @@ export default function WeChatPreview({
             contentHtml: formattedHtml,
             coverUrl: absoluteCoverUrl,
             thumbMediaId: uploadedMediaId,
-            originalDeclaration: declareOriginal
+            originalDeclaration: declareOriginal,
+            appId: publishAppId,
+            appSecret: publishAppSecret
           })
         });
 

@@ -60,8 +60,8 @@ async function uploadImageToWeChat(imgUrl: string, accessToken: string, req: exp
 
 router.post("/upload-media", async (req, res) => {
     try {
-        const accessToken = await getWeChatAccessToken();
-        const { imgUrl } = req.body;
+        const { imgUrl, appId, appSecret } = req.body;
+        const accessToken = await getWeChatAccessToken(appId, appSecret);
         
         if (!imgUrl) return res.status(400).json({ success: false, error: "Missing imgUrl" });
         
@@ -82,8 +82,8 @@ router.post("/upload-media", async (req, res) => {
 router.post("/publish", async (req, res) => {
     console.log("[WeChat Publish] Entering routessss");
     try {
-        const accessToken = await getWeChatAccessToken();
-        const { title, contentHtml, coverUrl, thumbMediaId, author, publishToDraft } = req.body;
+        const { title, contentHtml, coverUrl, thumbMediaId, author, publishToDraft, appId, appSecret } = req.body;
+        const accessToken = await getWeChatAccessToken(appId, appSecret);
         
         let targetMediaId = thumbMediaId || "";
         if (!targetMediaId && coverUrl) {
@@ -128,7 +128,12 @@ router.post("/publish", async (req, res) => {
         res.json({ success: true, draft_id: draftData.media_id });
     } catch (err: any) {
         console.error("[WeChat Publish] Error:", err);
-        res.status(500).json({ success: false, error: err.message || "未知错误" });
+        // Specifically catch missing credentials
+        if (err.message === "Missing credentials") {
+             res.status(401).json({ success: false, error: "微信 AppID 或 AppSecret 未设置。请在设置中配置。" });
+        } else {
+             res.status(500).json({ success: false, error: err.message || "未知错误" });
+        }
     }
 });
 
@@ -140,7 +145,13 @@ router.post("/albums", async (req, res) => {
         const data = await resData.json();
         res.json({ success: true, items: data.items || [] });
     } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error("[WeChat Albums] Error:", err);
+        // Specifically catch missing credentials
+        if (err.message === "Missing credentials") {
+             res.status(401).json({ success: false, error: "微信 AppID 或 AppSecret 未设置。请在设置中配置。" });
+        } else {
+             res.status(500).json({ success: false, error: err.message });
+        }
     }
 });
 
