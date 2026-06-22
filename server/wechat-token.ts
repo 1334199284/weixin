@@ -32,8 +32,10 @@ async function fetchNewTokenDirectly(appId: string, appSecret: string): Promise<
 }
 
 export async function getWeChatAccessToken(appId?: string, appSecret?: string): Promise<string> {
+  console.log(`[WeChat TokenManager] getWeChatAccessToken called. appId arg present: ${!!appId}, appSecret arg present: ${!!appSecret}`);
   const id = appId || process.env.WECHAT_APPID;
   const secret = appSecret || process.env.WECHAT_APPSECRET;
+  console.log(`[WeChat TokenManager] id resolved: ${id ? "Present" : "Missing"}, secret resolved: ${secret ? "Present" : "Missing"}`);
   if (!id || !secret) throw new Error("Missing credentials");
 
   const cached = wechatTokenCache[id];

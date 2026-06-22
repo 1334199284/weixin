@@ -344,18 +344,29 @@ export default function WeChatPreview({
         };
         setUploadedStickers(prev => [newSticker, ...prev]);
 
+        // Helper to construct API URL
+        const getApiUrl = (path: string) => {
+            const base = syncServerUrl.trim();
+            return base ? `${base}/api/wechat/${path}` : `/api/wechat/${path}`;
+        };
+
         // Upload to WeChat immediately
         try {
-            const targetServer = syncServerUrl.trim() || API_BASE_URL;
-            const res = await fetch(`${targetServer}/api/upload-media`, {
+            
+            // Configure credentials first
+            await fetch(getApiUrl("configure"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ appId: publishAppId, appSecret: publishAppSecret })
+            });
+
+            const res = await fetch(getApiUrl("upload-media"), {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({ 
-                    imgUrl: base64Str,
-                    appId: publishAppId,
-                    appSecret: publishAppSecret
+                    imgUrl: base64Str
                 })
             });
 
@@ -429,8 +440,19 @@ export default function WeChatPreview({
     setFetchingAlbums(true);
     setAlbumFetchError(null);
     try {
-      const targetServer = syncServerUrl.trim() || API_BASE_URL;
-      const url = `${targetServer}/api/wechat/albums`;
+      const getApiUrl = (path: string) => {
+          const base = syncServerUrl.trim();
+          return base ? `${base}/api/wechat/${path}` : `/api/wechat/${path}`;
+      };
+      
+      // Configure credentials first
+      await fetch(getApiUrl("configure"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ appId: publishAppId, appSecret: publishAppSecret })
+      });
+      
+      const url = getApiUrl("albums");
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -539,9 +561,20 @@ export default function WeChatPreview({
       );
 
       try {
-        const targetServer = syncServerUrl.trim() || API_BASE_URL;
-        console.log(`[WeChatPreview] Fetching ${targetServer}/api/wechat/publish`);
-        const res = await fetch(`${targetServer}/api/wechat/publish`, {
+        const getApiUrl = (path: string) => {
+            const base = syncServerUrl.trim();
+            return base ? `${base}/api/wechat/${path}` : `/api/wechat/${path}`;
+        };
+        
+        // Configure credentials first
+        await fetch(getApiUrl("configure"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ appId: publishAppId, appSecret: publishAppSecret })
+        });
+
+        console.log(`[WeChatPreview] Fetching ${getApiUrl("publish")}`);
+        const res = await fetch(getApiUrl("publish"), {
           method: "POST",
           headers: { 
             "Content-Type": "application/json"
@@ -553,9 +586,7 @@ export default function WeChatPreview({
             contentHtml: formattedHtml,
             coverUrl: absoluteCoverUrl,
             thumbMediaId: uploadedMediaId,
-            originalDeclaration: declareOriginal,
-            appId: publishAppId,
-            appSecret: publishAppSecret
+            originalDeclaration: declareOriginal
           })
         });
 

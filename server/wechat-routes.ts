@@ -58,10 +58,22 @@ async function uploadImageToWeChat(imgUrl: string, accessToken: string, req: exp
     }
 }
 
+let globalAppId: string | null = null;
+let globalAppSecret: string | null = null;
+
+router.post("/configure", async (req, res) => {
+    const { appId, appSecret } = req.body;
+    if (!appId || !appSecret) return res.status(400).json({ success: false, error: "Missing appId or appSecret" });
+    globalAppId = appId;
+    globalAppSecret = appSecret;
+    res.json({ success: true });
+});
+
 router.post("/upload-media", async (req, res) => {
     try {
-        const { imgUrl, appId, appSecret } = req.body;
-        const accessToken = await getWeChatAccessToken(appId, appSecret);
+        const { imgUrl } = req.body;
+        console.log("[WeChat Upload Media] Using configured credentials if available");
+        const accessToken = await getWeChatAccessToken(globalAppId || undefined, globalAppSecret || undefined);
         
         if (!imgUrl) return res.status(400).json({ success: false, error: "Missing imgUrl" });
         
@@ -80,10 +92,11 @@ router.post("/upload-media", async (req, res) => {
 });
 
 router.post("/publish", async (req, res) => {
-    console.log("[WeChat Publish] Entering routessss");
+    console.log("[WeChat Publish] Entering routes");
     try {
-        const { title, contentHtml, coverUrl, thumbMediaId, author, publishToDraft, appId, appSecret } = req.body;
-        const accessToken = await getWeChatAccessToken(appId, appSecret);
+        const { title, contentHtml, coverUrl, thumbMediaId, author, publishToDraft } = req.body;
+        
+        const accessToken = await getWeChatAccessToken(globalAppId || undefined, globalAppSecret || undefined);
         
         let targetMediaId = thumbMediaId || "";
         if (!targetMediaId && coverUrl) {
